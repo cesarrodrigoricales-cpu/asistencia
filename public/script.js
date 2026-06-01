@@ -308,17 +308,142 @@ async function handleFileImport(input) {
   const file = input.files[0];
   if (!file) return;
 
-  const data = await readExcelFile(file);
-  if (!data.length) { showToast('Archivo vacío o inválido', 'err'); return; }
+  let wb;
+  try {
+    const data = await file.arrayBuffer();
+    wb = XLSX.read(data, { type: 'array' });
+  } catch (e) {
+    showToast('Archivo inválido o corrupto', 'err');
+    return;
+  }
 
-  // Previsualizar
+  // Cargar todos los cursos de primaria una sola vez
+  let courses;
+  try {
+    courses = await apiFetch('/api/courses?level=primaria');
+  } catch (e) {
+    showToast('Error al conectar con la base de datos', 'err');
+    return;
+  }
+
+  let totalOk = 0, totalSkip = 0, totalErr = 0;
+  const log = [];
+
+  for (const sheetName of wb.SheetNames) {
+    // ── Detectar grado y sección del nombre de la hoja ──
+    const parsed = parseSheetName(sheetName);
+    if (!parsed) {
+      log.push(`⚠️ Hoja "${sheetName}" ignorada (no se reconoció)`);
+      continue;
+    }
+
+    const { grade, section } = parsed;
+    const courseName = `${grade}° ${section}`;
+
+    // Buscar curso en BD
+    const course = courses.find(c =>
+      c.name.trim().toLowerCase() === courseName.trim().toLowerCase()
+    );
+    if (!course) {
+      log.push(`⚠️ "${sheetName}" → ${courseName} no existe en BD`);
+      continue;
+    }
+
+    // Leer alumnos de la hoja
+    const ws      = wb.Sheets[sheetName];
+    const rows    = XLSX.utils.sheet_to_json(ws);
+    if (!rows.length) {
+      log.push(`➖ "${sheetName}" está vacía`);
+      continue;
+    }
+
+    // Obtener alumnos ya existentes en ese curso
+    let existing = [];
+    try {
+      existing = await apiFetch(`/api/students/course/${course.id}`);
+    } catch (e) { /* si falla seguimos igual */ }
+
+    let ok = 0, skip = 0;
+    for (const row of rows) {
+      const name =
+        row.name   || row.nombre || row.Nombre || row.NAME ||
+        row['Apellidos y nombres'] || row['APELLIDOS Y NOMBRES'] ||
+        row['Apellidos y Nombres'];
+
+      if (!name) continue;
+
+      const nameClean = String(name).trim();
+
+      // No duplicar
+      const yaExiste = existing.some(s =>
+        s.name.trim().toLowerCase() === nameClean.toLowerCase()
+      );
+      if (yaExiste) { skip++; continue; }
+
+      try {
+        await apiFetch('/api/students', 'POST', {
+          name:     nameClean,
+          courseId: course.id,
+          level:    'primaria'
+        });
+        ok++;
+      } catch (e) { totalErr++; }
+    }
+
+    totalOk   += ok;
+    totalSkip += skip;
+    log.push(`✅ ${courseName}: ${ok} importados, ${skip} ya existían`);
+  }
+
+  // Mostrar resultado
   const preview = document.getElementById('import-preview');
   preview.style.display = 'block';
-  preview.innerHTML = `<b>Vista previa (${data.length} filas):</b><br>` +
-    data.slice(0, 5).map(r => Object.values(r).join(' | ')).join('<br>') +
-    (data.length > 5 ? `<br>… y ${data.length - 5} más` : '');
+  preview.innerHTML =
+    `<b>Importación completada</b><br>` +
+    `✅ ${totalOk} alumnos nuevos &nbsp;|&nbsp; ➖ ${totalSkip} duplicados &nbsp;|&nbsp; ❌ ${totalErr} errores<br><br>` +
+    log.map(l => `${l}`).join('<br>');
 
+  showToast(totalOk > 0 ? `✅ ${totalOk} alumnos importados` : '➖ Sin alumnos nuevos');
   input.value = '';
+}
+
+/* ── Parser flexible de nombres de hoja ── */
+function parseSheetName(name) {
+  // Normalizar: quitar tildes, espacios extra, pasar a minúsculas
+  const n = name.trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+  // Palabras → número
+  const words = {
+    'primero': 1, 'segundo': 2, 'tercero': 3,
+    'cuarto':  4, 'quinto':  5, 'sexto':   6,
+    'primer':  1, 'tercer':  3
+  };
+
+  let grade   = null;
+  let section = null;
+
+  // Intentar extraer número directo (ej: "1", "2°", "3º")
+  const numMatch = n.match(/(\d)/);
+  if (numMatch) {
+    grade = parseInt(numMatch[1]);
+  } else {
+    // Intentar palabra
+    for (const [word, num] of Object.entries(words)) {
+      if (n.includes(word)) { grade = num; break; }
+    }
+  }
+
+  // Extraer sección (letra A-Z)
+  const secMatch = n.match(/[a-z](?=\s*$)/) || n.match(/\b([a-f])\b/);
+  if (secMatch) {
+    section = secMatch[0].toUpperCase();
+  }
+
+  if (!grade || !section || grade < 1 || grade > 6) return null;
+  return { grade, section };
 }
 
 /* ============================================================
