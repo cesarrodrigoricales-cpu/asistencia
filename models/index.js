@@ -9,9 +9,15 @@ const sequelize = new Sequelize(
   dbConfig.username,
   dbConfig.password,
   {
-    host:    dbConfig.host,
+    host: dbConfig.host,
     dialect: dbConfig.dialect,
-    logging: false
+    logging: false,
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    }
   }
 );
 
