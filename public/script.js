@@ -409,13 +409,17 @@ async function handleFileImport(input) {
 
 /* ── Parser flexible de nombres de hoja ── */
 function parseSheetName(name) {
-  // Normalizar: quitar tildes, espacios extra, pasar a minúsculas
   const n = name.trim()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+    .toLowerCase();
 
-  // Palabras → número
+  // Tomar solo la parte ANTES del primer guión, espacio largo, o texto extra
+  // Ej: "2A-ABRIL" → "2A", "4AJANET" → "4A", "5C -mayo" → "5C"
+  const clean = n
+    .replace(/-.*$/, '')        // quitar todo desde el primer guión
+    .replace(/\s.*$/, '')       // quitar todo desde el primer espacio
+    .trim();
+
   const words = {
     'primero': 1, 'segundo': 2, 'tercero': 3,
     'cuarto':  4, 'quinto':  5, 'sexto':   6,
@@ -425,21 +429,20 @@ function parseSheetName(name) {
   let grade   = null;
   let section = null;
 
-  // Intentar extraer número directo (ej: "1", "2°", "3º")
-  const numMatch = n.match(/(\d)/);
+  // Número directo al inicio (ej: "1a", "2b", "6c")
+  const numMatch = clean.match(/^(\d)/);
   if (numMatch) {
     grade = parseInt(numMatch[1]);
+    // Sección: primera letra después del número (y símbolos °º)
+    const secMatch = clean.match(/^\d[°º]?\s*([a-f])/);
+    if (secMatch) section = secMatch[1].toUpperCase();
   } else {
-    // Intentar palabra
+    // Palabra escrita (ej: "primero a", "sexto b")
     for (const [word, num] of Object.entries(words)) {
       if (n.includes(word)) { grade = num; break; }
     }
-  }
-
-  // Extraer sección (letra A-Z)
-  const secMatch = n.match(/[a-z](?=\s*$)/) || n.match(/\b([a-f])\b/);
-  if (secMatch) {
-    section = secMatch[0].toUpperCase();
+    const secMatch = n.match(/\b([a-f])\b/);
+    if (secMatch) section = secMatch[1].toUpperCase();
   }
 
   if (!grade || !section || grade < 1 || grade > 6) return null;
