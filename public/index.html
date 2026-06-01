@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asistencias Escolares</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- PANTALLA 1: SELECTOR -->
+  <div id="screen-selector" class="screen active">
+    <div class="sel-deco">
+      <div class="deco-shape s1"></div>
+      <div class="deco-shape s2"></div>
+      <div class="deco-shape s3"></div>
+    </div>
+    <div class="sel-inner">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 40 40" fill="none">
+            <rect x="4" y="8" width="32" height="26" rx="4" fill="#fff" opacity=".15"/>
+            <rect x="4" y="8" width="32" height="26" rx="4" stroke="#fff" stroke-width="2"/>
+            <path d="M13 20h14M13 26h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="28" cy="14" r="6" fill="#F4A261"/>
+            <path d="M26 14h4M28 12v4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <h1>AttendEdu</h1>
+          <p class="brand-sub">Sistema de Asistencias</p>
+        </div>
+      </div>
+
+      <p class="sel-desc">Elige el nivel educativo para comenzar el registro</p>
+
+      <div class="level-grid">
+        <button class="level-btn level-pri" onclick="goTo('primaria')">
+          <div class="lbtn-art">
+            <svg viewBox="0 0 80 60" fill="none">
+              <rect x="8" y="30" width="64" height="24" rx="6" fill="#FFF3E0"/>
+              <rect x="20" y="10" width="40" height="28" rx="4" fill="#FFB74D"/>
+              <circle cx="30" cy="24" r="4" fill="#fff"/>
+              <circle cx="50" cy="24" r="4" fill="#fff"/>
+              <path d="M34 32c0 3.3 2.7 6 6 6s6-2.7 6-6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+              <rect x="0" y="36" width="10" height="14" rx="2" fill="#FFA726"/>
+              <rect x="70" y="36" width="10" height="14" rx="2" fill="#FFA726"/>
+            </svg>
+          </div>
+          <span class="lbtn-label">Primaria</span>
+          <span class="lbtn-sub">1° a 6° grado</span>
+        </button>
+
+        <button class="level-btn level-sec" onclick="goTo('secundaria')">
+          <div class="lbtn-art">
+            <svg viewBox="0 0 80 60" fill="none">
+              <rect x="10" y="8" width="60" height="44" rx="6" fill="#E8EAF6"/>
+              <rect x="18" y="18" width="44" height="28" rx="3" fill="#5C6BC0"/>
+              <rect x="22" y="22" width="12" height="8" rx="2" fill="#9FA8DA"/>
+              <rect x="38" y="22" width="20" height="3" rx="1.5" fill="#9FA8DA"/>
+              <rect x="38" y="28" width="14" height="3" rx="1.5" fill="#7986CB"/>
+              <rect x="22" y="34" width="36" height="3" rx="1.5" fill="#7986CB"/>
+              <circle cx="20" cy="10" r="4" fill="#FF7043"/>
+              <circle cx="40" cy="10" r="4" fill="#FFB74D"/>
+              <circle cx="60" cy="10" r="4" fill="#66BB6A"/>
+            </svg>
+          </div>
+          <span class="lbtn-label">Secundaria</span>
+          <span class="lbtn-sub">1° a 5° año</span>
+        </button>
+      </div>
+
+     <div style="width:100%; text-align:center;">
+  <p style="font-size:12px; color:rgba(255,255,255,.55); line-height:1.7; margin-bottom:10px;">
+    📋 Si tienes el Excel del <b style="color:rgba(255,255,255,.8);">SIAGIE</b> con todos los grados y secciones, impórtalo aquí.<br>
+    Si quieres agregar alumnos por grado individual, hazlo dentro de cada sección.
+  </p>
+  <div class="upload-zone-entry" onclick="document.getElementById('csv-global').click()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22">
+      <path d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2z"/>
+    </svg>
+    <span>Importar lista desde CSV o Excel</span>
+  </div>
+</div>
+<input type="file" id="csv-global" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileImport(this)">
+      <input type="file" id="csv-global" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileImport(this)">
+
+      <div id="import-preview" class="import-preview" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- PANTALLA 2: GRADO/SECCIÓN -->
+  <div id="screen-grade" class="screen">
+    <div class="grade-header">
+      <button class="back-pill" onclick="goTo('selector')">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 16l-6-6 6-6"/></svg>
+        Volver
+      </button>
+      <div class="grade-title-wrap">
+        <h2 id="grade-level-title">Primaria</h2>
+        <p class="grade-subtitle">Selecciona grado y sección</p>
+      </div>
+    </div>
+
+    <div class="grade-body">
+      <div class="grade-selector-row">
+        <div class="selector-group">
+          <label class="sel-label">Grado</label>
+          <div class="grade-chips" id="grade-chips"></div>
+        </div>
+        <div class="selector-group">
+          <label class="sel-label">Sección</label>
+          <div class="section-chips" id="section-chips">
+            <button class="chip chip-sec active-chip" data-sec="A">A</button>
+            <button class="chip chip-sec" data-sec="B">B</button>
+            <button class="chip chip-sec" data-sec="C">C</button>
+            <button class="chip chip-sec" data-sec="D">D</button>
+            <button class="chip chip-sec" data-sec="E">E</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grade-info-card" id="grade-info-card">
+        <div class="gic-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+        </div>
+        <div>
+          <div class="gic-main" id="gic-main">Selecciona grado y sección</div>
+          <div class="gic-sub" id="gic-sub">Los alumnos se cargarán automáticamente</div>
+        </div>
+        <div class="gic-badge" id="gic-badge">0 alumnos</div>
+      </div>
+
+      <div class="grade-upload-row">
+        <button class="upload-btn-sm" onclick="document.getElementById('csv-grade').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Importar CSV / Excel para este grado
+        </button>
+        <input type="file" id="csv-grade" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleGradeImport(this)">
+      </div>
+
+      <button class="btn-confirm-grade" id="btn-confirm-grade" onclick="enterAttendance()">
+        Ir al registro de asistencia
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M7 4l6 6-6 6"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- PANTALLA 3: ASISTENCIAS -->
+  <div id="screen-attendance" class="screen">
+    <div class="att-header" id="att-header">
+      <div class="att-header-left">
+        <button class="back-pill light" onclick="goTo('grade')">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 16l-6-6 6-6"/></svg>
+          Volver
+        </button>
+        <div class="att-title-wrap">
+          <h2 id="att-title">3° A — Primaria</h2>
+          <div class="att-date" id="att-date"></div>
+        </div>
+      </div>
+      <div class="att-header-right">
+        <button class="icon-btn" onclick="saveAttendance()" title="Guardar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+        </button>
+        <button class="icon-btn" onclick="exportAttendance()" title="Exportar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="att-stats-bar">
+      <div class="stat-tile st-total"><span class="stv" id="st-total">0</span><span class="stl">Total</span></div>
+      <div class="stat-tile st-pres"><span class="stv" id="st-pres">0</span><span class="stl">Presentes</span></div>
+      <div class="stat-tile st-aus"><span class="stv" id="st-aus">0</span><span class="stl">Ausentes</span></div>
+      <div class="stat-tile st-tard"><span class="stv" id="st-tard">0</span><span class="stl">Tardanzas</span></div>
+      <div class="stat-tile st-pct"><span class="stv" id="st-pct">—</span><span class="stl">Asistencia</span></div>
+    </div>
+
+    <div class="att-actions">
+      <button class="action-pill ap-all" onclick="markAll('presente')">Todos presentes</button>
+      <button class="action-pill ap-none" onclick="markAll('ausente')">Todos ausentes</button>
+      <button class="action-pill ap-reset" onclick="markAll('ninguno')">Limpiar</button>
+    </div>
+
+    <div class="att-legend">
+      <span class="leg-item leg-p">Presente</span>
+      <span class="leg-item leg-a">Ausente</span>
+      <span class="leg-item leg-t">Tardanza</span>
+      <span class="leg-item leg-n">Sin marcar</span>
+    </div>
+
+    <div class="att-list" id="att-list"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- CHAT FLOTANTE -->
+<div class="fab-chat" id="fab-chat" onclick="toggleFloatChat()">
+  <div class="fab-icon fab-open">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+      <path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+    </svg>
+  </div>
+  <div class="fab-icon fab-close" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+      <path d="M6 18L18 6M6 6l12 12"/>
+    </svg>
+  </div>
+  <div class="fab-badge" id="fab-badge">1</div>
+</div>
+
+<div class="float-chat" id="float-chat">
+  <div class="fc-header">
+    <div class="fc-header-left">
+      <div class="fc-avatar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+          <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h16a2 2 0 012 2v10a2 2 0 01-2 2h-2"/>
+        </svg>
+      </div>
+      <div>
+        <div class="fc-name">Asistente IA</div>
+        <div class="fc-status"><span class="fc-dot"></span>En línea</div>
+      </div>
+    </div>
+    <button class="fc-close" onclick="toggleFloatChat()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <div class="fc-messages" id="fc-messages"></div>
+
+  <div class="fc-suggestions" id="fc-suggestions">
+    <button class="fc-sug" onclick="fcQuick('¿Qué puedes hacer?')">¿Qué puedes hacer?</button>
+    <button class="fc-sug" onclick="fcQuick('Pon todos presentes')">Todos presentes</button>
+    <button class="fc-sug" onclick="fcQuick('¿Quiénes faltan?')">¿Quiénes faltan?</button>
+    <button class="fc-sug" onclick="fcQuick('Resumen del día')">Resumen</button>
+  </div>
+
+  <div class="fc-input-row">
+    <input class="fc-input" id="fc-input" placeholder="Escribe un comando o pregunta…" onkeydown="if(event.key==='Enter') fcSend()">
+    <button class="fc-send-btn" onclick="fcSend()">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,646 @@
+/* ============================================================
+   CONFIGURACIÓN
+   ============================================================ */
+const API = '/api';
+
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+let currentLevel   = 'primaria';
+let currentGrade   = null;   // chip seleccionado, ej: "1"
+let currentSection = 'A';    // chip seleccionado, ej: "A"
+let currentCourse  = null;   // objeto { id, name, teacher, level }
+let statusMap      = {};     // { studentId: 'presente'|'ausente'|'tardanza'|'ninguno' }
+let studentsCache  = [];     // alumnos cargados en pantalla 3
+let attendanceIds  = {};     // { studentId: attendanceRecordId } para hacer PUT en vez de POST
+
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+function showToast(msg, type = 'ok') {
+  const t = document.getElementById('toast');
+  t.textContent  = msg;
+  t.className    = 'toast show ' + type;
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fmtDate(iso) {
+  const [y, m, d] = iso.split('-');
+  const months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  return `${parseInt(d)} de ${months[parseInt(m)-1]} de ${y}`;
+}
+
+/* ============================================================
+   NAVEGACIÓN ENTRE PANTALLAS
+   ============================================================ */
+function goTo(dest) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+
+  if (dest === 'selector' || dest === 'inicio') {
+    document.getElementById('screen-selector').classList.add('active');
+
+  } else if (dest === 'primaria' || dest === 'secundaria') {
+    currentLevel = dest;
+    document.getElementById('grade-level-title').textContent =
+      dest === 'primaria' ? 'Primaria' : 'Secundaria';
+    buildGradeChips();
+    document.getElementById('screen-grade').classList.add('active');
+
+  } else if (dest === 'grade') {
+    document.getElementById('screen-grade').classList.add('active');
+
+  } else if (dest === 'attendance') {
+    document.getElementById('screen-attendance').classList.add('active');
+  }
+}
+
+/* ============================================================
+   PANTALLA 2: CHIPS DE GRADO Y SECCIÓN
+   ============================================================ */
+function buildGradeChips() {
+  const max   = currentLevel === 'primaria' ? 6 : 5;
+  const label = currentLevel === 'primaria' ? '°' : '°';
+  const cont  = document.getElementById('grade-chips');
+  cont.innerHTML = '';
+
+  for (let i = 1; i <= max; i++) {
+    const btn = document.createElement('button');
+    btn.className    = 'chip chip-grade' + (i === 1 ? ' active-chip' : '');
+    btn.dataset.grade = String(i);
+    btn.textContent  = i + label;
+    btn.onclick      = () => selectGrade(String(i));
+    cont.appendChild(btn);
+  }
+
+  // Sección chips
+  document.querySelectorAll('.chip-sec').forEach(b => {
+    b.onclick = () => selectSection(b.dataset.sec);
+  });
+
+  currentGrade   = '1';
+  currentSection = 'A';
+  markActiveChip('grade-chips',   '1',  'chip-grade');
+  markActiveChip('section-chips', 'A',  'chip-sec');
+  refreshGradeInfo();
+}
+
+function markActiveChip(containerId, value, chipClass) {
+  document.querySelectorAll(`#${containerId} .${chipClass}`)
+    .forEach(b => b.classList.toggle('active-chip',
+      (b.dataset.grade || b.dataset.sec) === value));
+}
+
+function selectGrade(g) {
+  currentGrade = g;
+  markActiveChip('grade-chips', g, 'chip-grade');
+  refreshGradeInfo();
+}
+
+function selectSection(s) {
+  currentSection = s;
+  markActiveChip('section-chips', s, 'chip-sec');
+  refreshGradeInfo();
+}
+
+async function refreshGradeInfo() {
+  const label = currentLevel === 'primaria'
+    ? `${currentGrade}° ${currentSection} — Primaria`
+    : `${currentGrade}° ${currentSection} — Secundaria`;
+
+  document.getElementById('gic-main').textContent  = label;
+  document.getElementById('gic-sub').textContent   = 'Buscando alumnos…';
+  document.getElementById('gic-badge').textContent = '…';
+
+  // Buscar curso que coincida con el nombre construido
+  try {
+    const courses = await apiFetch(`/api/courses?level=${currentLevel}`);
+    const courseName = `${currentGrade}° ${currentSection}`;
+    currentCourse = courses.find(c =>
+      c.name.trim().toLowerCase() === courseName.trim().toLowerCase()
+    ) || null;
+
+    if (!currentCourse) {
+      document.getElementById('gic-sub').textContent   = 'No existe ese grado/sección en la base de datos';
+      document.getElementById('gic-badge').textContent = '0 alumnos';
+      return;
+    }
+
+    const students = await apiFetch(`/api/students/course/${currentCourse.id}`);
+    document.getElementById('gic-sub').textContent   =
+      currentCourse.teacher ? `Prof. ${currentCourse.teacher}` : 'Sin docente asignado';
+    document.getElementById('gic-badge').textContent = `${students.length} alumnos`;
+  } catch (e) {
+    document.getElementById('gic-sub').textContent   = 'Error al cargar';
+    document.getElementById('gic-badge').textContent = '—';
+  }
+}
+
+/* ============================================================
+   PANTALLA 3: REGISTRO DE ASISTENCIA
+   ============================================================ */
+async function enterAttendance() {
+  if (!currentCourse) {
+    showToast('Ese grado/sección no existe. Verifica la base de datos.', 'err');
+    return;
+  }
+
+  goTo('attendance');
+
+  const label = `${currentGrade}° ${currentSection} — ${currentLevel === 'primaria' ? 'Primaria' : 'Secundaria'}`;
+  document.getElementById('att-title').textContent = label;
+  document.getElementById('att-date').textContent  = fmtDate(todayISO());
+
+  try {
+    // Cargar alumnos
+    studentsCache = await apiFetch(`/api/students/course/${currentCourse.id}`);
+    statusMap     = {};
+    attendanceIds = {};
+
+    // Cargar asistencias de hoy si ya existen
+    const todayAtts = await apiFetch(`/api/attendance/date/${todayISO()}`);
+    todayAtts.forEach(a => {
+      if (studentsCache.some(s => s.id === a.studentId)) {
+        statusMap[a.studentId]    = a.status;
+        attendanceIds[a.studentId] = a.id;
+      }
+    });
+
+    renderAttList(studentsCache);
+    updateStats(studentsCache);
+  } catch (e) {
+    showToast('Error al cargar los datos', 'err');
+  }
+}
+
+function renderAttList(students) {
+  const list = document.getElementById('att-list');
+  list.innerHTML = '';
+
+  students.forEach((s, i) => {
+    const status = statusMap[s.id] || 'ninguno';
+    const div = document.createElement('div');
+    div.className  = `att-row status-${status}`;
+    div.id         = `row-${s.id}`;
+    div.innerHTML  = `
+      <div class="att-num">${i + 1}</div>
+      <div class="att-name">${s.name}</div>
+      <div class="att-btns">
+        <button class="att-btn btn-p ${status === 'presente'  ? 'active' : ''}"
+                onclick="setStatus(${s.id},'presente')">P</button>
+        <button class="att-btn btn-a ${status === 'ausente'   ? 'active' : ''}"
+                onclick="setStatus(${s.id},'ausente')">A</button>
+        <button class="att-btn btn-t ${status === 'tardanza'  ? 'active' : ''}"
+                onclick="setStatus(${s.id},'tardanza')">T</button>
+      </div>`;
+    list.appendChild(div);
+  });
+}
+
+function setStatus(studentId, status) {
+  statusMap[studentId] = status;
+  const row = document.getElementById(`row-${studentId}`);
+  if (row) {
+    row.className = `att-row status-${status}`;
+    row.querySelectorAll('.att-btn').forEach(b => b.classList.remove('active'));
+    const map = { presente: 'btn-p', ausente: 'btn-a', tardanza: 'btn-t' };
+    row.querySelector('.' + map[status])?.classList.add('active');
+  }
+  updateStats(studentsCache);
+}
+
+function markAll(status) {
+  studentsCache.forEach(s => { statusMap[s.id] = status; });
+  renderAttList(studentsCache);
+  updateStats(studentsCache);
+}
+
+function updateStats(students) {
+  const total    = students.length;
+  const presentes = students.filter(s => statusMap[s.id] === 'presente').length;
+  const ausentes  = students.filter(s => statusMap[s.id] === 'ausente').length;
+  const tardanzas = students.filter(s => statusMap[s.id] === 'tardanza').length;
+  const pct       = total > 0 ? Math.round((presentes + tardanzas) / total * 100) : 0;
+
+  document.getElementById('st-total').textContent = total;
+  document.getElementById('st-pres').textContent  = presentes;
+  document.getElementById('st-aus').textContent   = ausentes;
+  document.getElementById('st-tard').textContent  = tardanzas;
+  document.getElementById('st-pct').textContent   = total > 0 ? pct + '%' : '—';
+}
+
+/* ============================================================
+   GUARDAR ASISTENCIAS (POST o PUT según exista)
+   ============================================================ */
+async function saveAttendance() {
+  if (!studentsCache.length) {
+    showToast('No hay alumnos cargados', 'err');
+    return;
+  }
+
+  const date = todayISO();
+  let ok = 0, err = 0;
+
+  const promises = studentsCache.map(async s => {
+    const status = statusMap[s.id] || 'ninguno';
+    if (status === 'ninguno') return;
+
+    try {
+      if (attendanceIds[s.id]) {
+        await apiFetch(`/api/attendance/${attendanceIds[s.id]}`, 'PUT', {
+          status, date, studentId: s.id
+        });
+      } else {
+        const created = await apiFetch('/api/attendance', 'POST', {
+          status, date, studentId: s.id
+        });
+        attendanceIds[s.id] = created.id;
+      }
+      ok++;
+    } catch (e) {
+      err++;
+    }
+  });
+
+  await Promise.all(promises);
+
+  if (err === 0) {
+    showToast(`✅ ${ok} asistencias guardadas correctamente`);
+  } else {
+    showToast(`⚠️ ${ok} guardadas, ${err} con error`, 'err');
+  }
+}
+
+/* ============================================================
+   EXPORTAR CSV / EXCEL
+   ============================================================ */
+function exportAttendance() {
+  if (!studentsCache.length) {
+    showToast('No hay datos para exportar', 'err');
+    return;
+  }
+
+  const rows = studentsCache.map((s, i) => ({
+    '#':        i + 1,
+    'Nombre':   s.name,
+    'Estado':   statusMap[s.id] || 'sin marcar',
+    'Fecha':    todayISO(),
+    'Grado':    `${currentGrade}° ${currentSection}`,
+    'Nivel':    currentLevel,
+    'Docente':  currentCourse?.teacher || ''
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Asistencia');
+  XLSX.writeFile(wb, `asistencia_${currentLevel}_${currentGrade}${currentSection}_${todayISO()}.xlsx`);
+  showToast('📥 Archivo Excel descargado');
+}
+
+/* ============================================================
+   IMPORTAR CSV / EXCEL (pantalla selector — global)
+   ============================================================ */
+async function handleFileImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const data = await readExcelFile(file);
+  if (!data.length) { showToast('Archivo vacío o inválido', 'err'); return; }
+
+  // Previsualizar
+  const preview = document.getElementById('import-preview');
+  preview.style.display = 'block';
+  preview.innerHTML = `<b>Vista previa (${data.length} filas):</b><br>` +
+    data.slice(0, 5).map(r => Object.values(r).join(' | ')).join('<br>') +
+    (data.length > 5 ? `<br>… y ${data.length - 5} más` : '');
+
+  input.value = '';
+}
+
+/* ============================================================
+   IMPORTAR CSV / EXCEL (pantalla grado — específico)
+   ============================================================ */
+async function handleGradeImport(input) {
+  const file = input.files[0];
+  if (!file || !currentCourse) {
+    showToast('Selecciona primero un grado/sección válido', 'err');
+    return;
+  }
+
+  const data = await readExcelFile(file);
+  if (!data.length) { showToast('Archivo vacío', 'err'); return; }
+
+  let ok = 0;
+  for (const row of data) {
+    // Acepta columna "name", "nombre", o "Apellidos y nombres" del SIAGIE
+    const name = row.name || row.nombre || row.Nombre || row.NAME
+      || row['Apellidos y nombres'] || row['APELLIDOS Y NOMBRES']
+      || row['Apellidos y Nombres'];
+
+    if (!name) continue;
+
+    // Verificar si ya existe para no duplicar
+    const yaExiste = studentsCache.some(s =>
+      s.name.trim().toLowerCase() === String(name).trim().toLowerCase()
+    );
+    if (yaExiste) continue;
+
+    try {
+      await apiFetch('/api/students', 'POST', {
+        name: String(name).trim(),
+        courseId: currentCourse.id,
+        level: currentLevel
+      });
+      ok++;
+    } catch (e) { /* ignorar */ }
+  }
+
+  showToast(ok > 0 ? `✅ ${ok} alumnos importados` : '➖ Sin alumnos nuevos');
+  refreshGradeInfo();
+  input.value = '';
+}
+
+function readExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb   = XLSX.read(e.target.result, { type: 'binary' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws);
+        resolve(data);
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsBinaryString(file);
+  });
+}
+
+/* ============================================================
+   HELPER API FETCH
+   ============================================================ */
+async function apiFetch(url, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+/* ============================================================
+   HELPER: getStudents (usado por el chat)
+   ============================================================ */
+function getStudents(level, grade, section) {
+  // El chat llama a esto sincrónicamente — devolvemos la cache
+  return studentsCache;
+}
+
+/* ============================================================
+   CHAT FLOTANTE
+   ============================================================ */
+let floatOpen    = false;
+let fcHasGreeted = false;
+
+function toggleFloatChat() {
+  floatOpen = !floatOpen;
+  const panel    = document.getElementById('float-chat');
+  const fabOpen  = document.querySelector('.fab-open');
+  const fabClose = document.querySelector('.fab-close');
+  const badge    = document.getElementById('fab-badge');
+
+  panel.classList.toggle('open', floatOpen);
+  fabOpen.style.display  = floatOpen ? 'none' : 'flex';
+  fabClose.style.display = floatOpen ? 'flex' : 'none';
+  badge.style.display    = 'none';
+
+  if (floatOpen && !fcHasGreeted) {
+    fcHasGreeted = true;
+    setTimeout(() => {
+      fcAddMsg('bot', '¡Hola! 👋 Soy tu asistente. Puedo ayudarte a controlar las asistencias con comandos de texto.<br><br>Por ejemplo:<br>'
+        + '<span class="fc-action-pill" onclick="fcQuick(\'Pon todos presentes\')">Pon todos presentes</span>'
+        + '<span class="fc-action-pill" onclick="fcQuick(\'Marca a Juan como ausente\')">Marca a Juan ausente</span>'
+        + '<span class="fc-action-pill" onclick="fcQuick(\'¿Qué puedes hacer?\')">¿Qué puedes hacer?</span>');
+    }, 300);
+  }
+
+  if (floatOpen) setTimeout(() => document.getElementById('fc-input').focus(), 350);
+}
+
+function fcAddMsg(type, html) {
+  const container = document.getElementById('fc-messages');
+  const div = document.createElement('div');
+  div.className = 'fc-msg ' + type;
+  div.innerHTML = type === 'bot'
+    ? `<div class="fc-bot-icon">🤖</div><div class="fc-bubble">${html}</div>`
+    : `<div class="fc-bubble">${html}</div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function fcShowTyping() {
+  const container = document.getElementById('fc-messages');
+  const div = document.createElement('div');
+  div.className = 'fc-msg bot';
+  div.id        = 'fc-typing';
+  div.innerHTML = `<div class="fc-bot-icon">🤖</div><div class="fc-bubble fc-typing"><span></span><span></span><span></span></div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+function fcRemoveTyping() {
+  document.getElementById('fc-typing')?.remove();
+}
+
+function fcSend() {
+  const input = document.getElementById('fc-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  fcQuick(text);
+}
+
+function fcQuick(text) {
+  fcAddMsg('user', text);
+  document.getElementById('fc-suggestions').style.display = 'none';
+  fcShowTyping();
+  setTimeout(() => {
+    fcRemoveTyping();
+    const resp = fcGetResponse(text);
+    fcAddMsg('bot', resp);
+  }, 600);
+}
+
+function fcGetResponse(query) {
+  const q = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const enAsistencias = document.getElementById('screen-attendance').classList.contains('active');
+
+  // ---- AYUDA ----
+  if (q.includes('que puedes') || q.includes('ayuda') || q.includes('comandos')) {
+    return `Puedo hacer estas cosas:<br><br>
+<b>📋 Asistencia:</b><br>
+<span class="fc-action-pill" onclick="fcQuick('Pon todos presentes')">Todos presentes</span>
+<span class="fc-action-pill" onclick="fcQuick('Pon todos ausentes')">Todos ausentes</span>
+<span class="fc-action-pill" onclick="fcQuick('Limpia todo')">Limpiar todo</span><br><br>
+<b>👤 Por alumno:</b><br>
+<span class="fc-action-pill" onclick="fcQuick('Marca a [nombre] como presente')">Marcar presente</span>
+<span class="fc-action-pill" onclick="fcQuick('Marca a [nombre] como ausente')">Marcar ausente</span>
+<span class="fc-action-pill" onclick="fcQuick('Marca a [nombre] como tardanza')">Marcar tardanza</span><br><br>
+<b>📊 Consultas:</b><br>
+<span class="fc-action-pill" onclick="fcQuick('Resumen del día')">Resumen</span>
+<span class="fc-action-pill" onclick="fcQuick('¿Quiénes faltan?')">Ausentes</span>
+<span class="fc-action-pill" onclick="fcQuick('¿Quiénes llegaron tarde?')">Tardanzas</span><br><br>
+<b>💾 Acciones:</b><br>
+<span class="fc-action-pill" onclick="fcQuick('Guardar asistencias')">Guardar</span>
+<span class="fc-action-pill" onclick="fcQuick('Exportar lista')">Exportar Excel</span>`;
+  }
+
+  // ---- NAVEGAR ----
+  if (!enAsistencias) {
+    if (q.includes('primaria') && (q.includes('ir') || q.includes('abrir') || q.includes('entrar') || q.includes('ve a'))) {
+      setTimeout(() => goTo('primaria'), 400);
+      return '¡Vamos a Primaria! 🎒';
+    }
+    if (q.includes('secundaria') && (q.includes('ir') || q.includes('abrir') || q.includes('entrar') || q.includes('ve a'))) {
+      setTimeout(() => goTo('secundaria'), 400);
+      return '¡Vamos a Secundaria! 🎓';
+    }
+    return 'Entra primero a una lista de asistencia para usar los comandos. '
+      + '<span class="fc-action-pill" onclick="fcQuick(\'Ir a primaria\')">Ir a Primaria</span> '
+      + '<span class="fc-action-pill" onclick="fcQuick(\'Ir a secundaria\')">Ir a Secundaria</span>';
+  }
+
+  const students = getStudents();
+
+  // ---- MARCAR TODOS ----
+  if ((q.includes('todos') || q.includes('tod@s')) && q.includes('present')) {
+    markAll('presente');
+    return `✅ Marqué a los ${students.length} alumnos como <b>presentes</b>.`;
+  }
+  if ((q.includes('todos') || q.includes('tod@s')) && q.includes('ausent')) {
+    markAll('ausente');
+    return `❌ Marqué a los ${students.length} alumnos como <b>ausentes</b>.`;
+  }
+  if (q.includes('limpiar') || q.includes('reiniciar') || q.includes('borrar todo') || q.includes('limpia')) {
+    markAll('ninguno');
+    return '🔄 Lista reiniciada.';
+  }
+
+  // ---- MARCAR ALUMNO INDIVIDUAL ----
+  if (q.includes('marca') || q.includes('pon a') || q.includes('cambia a')) {
+    let targetStatus = null;
+    if (q.includes('present'))                          targetStatus = 'presente';
+    else if (q.includes('ausent') || q.includes('falt')) targetStatus = 'ausente';
+    else if (q.includes('tard'))                        targetStatus = 'tardanza';
+
+    if (targetStatus) {
+      const matched = findStudentByName(q, students);
+      if (matched.length === 1) {
+        setStatus(matched[0].id, targetStatus);
+        const icons = { presente: '✅', ausente: '❌', tardanza: '⏰' };
+        return `${icons[targetStatus]} <b>${matched[0].name}</b> marcado como <b>${targetStatus}</b>.`;
+      } else if (matched.length > 1) {
+        return `Encontré ${matched.length} alumnos: ${matched.map(s =>
+          `<span class="fc-action-pill" onclick="fcMarkStudent(${s.id},'${targetStatus}')">${s.name}</span>`
+        ).join('')} ¿Cuál?`;
+      } else {
+        return `No encontré ese alumno.<br>${students.map(s =>
+          `<span class="fc-action-pill" onclick="fcMarkStudent(${s.id},'${targetStatus}')">${s.name.split(' ')[0]}</span>`
+        ).join('')}`;
+      }
+    }
+  }
+
+  // ---- CONSULTAS ----
+  const presentes = students.filter(s => statusMap[s.id] === 'presente');
+  const ausentes  = students.filter(s => statusMap[s.id] === 'ausente');
+  const tardanzas = students.filter(s => statusMap[s.id] === 'tardanza');
+  const sinMarcar = students.filter(s => !statusMap[s.id] || statusMap[s.id] === 'ninguno');
+  const pct       = students.length > 0 ? Math.round((presentes.length + tardanzas.length) / students.length * 100) : 0;
+
+  if (q.includes('resumen') || q.includes('reporte') || q.includes('como vamos') || q.includes('como esta')) {
+    return `📊 <b>Resumen actual</b><br>
+✅ Presentes: <b>${presentes.length}</b><br>
+❌ Ausentes: <b>${ausentes.length}</b><br>
+⏰ Tardanzas: <b>${tardanzas.length}</b><br>
+📋 Sin marcar: <b>${sinMarcar.length}</b><br>
+📈 Asistencia: <b>${pct}%</b>`;
+  }
+  if (q.includes('falt') || q.includes('ausent') || q.includes('quienes no')) {
+    if (!ausentes.length) return '¡Sin ausentes hoy! 🎉';
+    return `❌ <b>Ausentes (${ausentes.length}):</b><br>${ausentes.map(s => `• ${s.name}`).join('<br>')}`;
+  }
+  if (q.includes('tard') || q.includes('llegaron tarde') || q.includes('retraso')) {
+    if (!tardanzas.length) return '⏰ Nadie llegó tarde hoy.';
+    return `⏰ <b>Tardanzas (${tardanzas.length}):</b><br>${tardanzas.map(s => `• ${s.name}`).join('<br>')}`;
+  }
+  if (q.includes('present') && (q.includes('quienes') || q.includes('lista') || q.includes('quien'))) {
+    if (!presentes.length) return 'Aún no hay presentes registrados.';
+    return `✅ <b>Presentes (${presentes.length}):</b><br>${presentes.map(s => `• ${s.name}`).join('<br>')}`;
+  }
+  if (q.includes('sin marcar') || q.includes('pendiente')) {
+    if (!sinMarcar.length) return '¡Todo registrado!';
+    return `📋 <b>Sin marcar (${sinMarcar.length}):</b><br>${sinMarcar.map(s => `• ${s.name}`).join('<br>')}`;
+  }
+  if (q.includes('cuantos') || q.includes('total') || q.includes('cuántos')) {
+    return `Hay <b>${students.length} alumnos</b> en esta lista.`;
+  }
+
+  // ---- GUARDAR / EXPORTAR ----
+  if (q.includes('guarda') || q.includes('guardar')) {
+    saveAttendance();
+    return '💾 Guardando asistencias…';
+  }
+  if (q.includes('export') || q.includes('excel') || q.includes('descargar')) {
+    exportAttendance();
+    return '📥 Exportando archivo Excel…';
+  }
+
+  // ---- BUSCAR ALUMNO ----
+  const encontrado = findStudentByName(q, students);
+  if (encontrado.length === 1) {
+    const s  = encontrado[0];
+    const st = statusMap[s.id] || 'sin marcar';
+    return `👤 <b>${s.name}</b>: <b>${st}</b><br>
+<span class="fc-action-pill" onclick="fcMarkStudent(${s.id},'presente')">✅ Presente</span>
+<span class="fc-action-pill" onclick="fcMarkStudent(${s.id},'ausente')">❌ Ausente</span>
+<span class="fc-action-pill" onclick="fcMarkStudent(${s.id},'tardanza')">⏰ Tardanza</span>`;
+  }
+
+  return `No entendí el comando. Prueba con:<br>
+<span class="fc-action-pill" onclick="fcQuick('Pon todos presentes')">Todos presentes</span>
+<span class="fc-action-pill" onclick="fcQuick('Resumen del día')">Resumen</span>
+<span class="fc-action-pill" onclick="fcQuick('¿Qué puedes hacer?')">Ver comandos</span>`;
+}
+
+function findStudentByName(query, students) {
+  const q = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  return students.filter(s => {
+    const name  = s.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const parts = name.split(' ');
+    return parts.some(p => q.includes(p) && p.length > 2);
+  });
+}
+
+function fcMarkStudent(id, status) {
+  setStatus(id, status);
+  const s     = studentsCache.find(x => x.id === id);
+  const icons = { presente: '✅', ausente: '❌', tardanza: '⏰' };
+  fcAddMsg('bot', `${icons[status]} <b>${s ? s.name : 'Alumno'}</b> marcado como <b>${status}</b>.`);
+}
+
+// Badge al cargar
+window.addEventListener('load', () => {
+  const badge = document.getElementById('fab-badge');
+  if (badge) badge.style.display = 'flex';
+});
