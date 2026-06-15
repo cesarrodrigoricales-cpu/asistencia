@@ -636,3 +636,180 @@ button { cursor: pointer; font-family: inherit; }
   .float-chat { width: calc(100vw - 24px); right: 12px; bottom: 82px; }
   .fab-chat { right: 16px; bottom: 16px; }
 }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Botón flotante agregar alumno */
+.btn-add-student {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px auto 32px;
+  padding: 12px 24px;
+  background: #5c6bc0;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(92,107,192,0.4);
+  transition: transform .15s, box-shadow .15s;
+}
+.btn-add-student:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(92,107,192,0.5);
+}
+
+/* Modal */
+.modal-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  animation: slideUp .2s ease;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a237e;
+  margin: 0;
+}
+.modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  padding: 4px;
+}
+.modal-sub {
+  font-size: 13px;
+  color: #666;
+  margin: 0 0 18px;
+}
+.modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e8eaf6;
+  border-radius: 12px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color .2s;
+}
+.modal-input:focus {
+  border-color: #5c6bc0;
+}
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.modal-btn-cancel {
+  flex: 1;
+  padding: 11px;
+  border: 2px solid #e8eaf6;
+  border-radius: 12px;
+  background: none;
+  color: #666;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.modal-btn-save {
+  flex: 2;
+  padding: 11px;
+  border: none;
+  border-radius: 12px;
+  background: #5c6bc0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .2s;
+}
+.modal-btn-save:hover { background: #3949ab; }
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.btn-edit {
+  border: 1.5px solid #5c6bc0 !important;
+  color: #5c6bc0 !important;
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px !important;
+  background: none !important;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-edit:hover { background: #e8eaf6 !important; }
+
+.btn-del {
+  border: 1.5px solid #e53935 !important;
+  color: #e53935 !important;
+  width: 30px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px !important;
+  background: none !important;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-del:hover { background: #ffebee !important; }
+
+/* ---- MODO EDICIÓN ---- */
+.edit-bar-inner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 1rem;
+  background: #fffbeb;
+  border-bottom: 2px dashed #fde68a;
+}
+.edit-bar-label {
+  font-size: 13px; font-weight: 600; color: #92400e; flex: 1;
+}
+.btn-add-inline {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #3730A3; color: #fff;
+  border: none; border-radius: 50px;
+  padding: 8px 16px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .18s;
+  box-shadow: 0 3px 10px rgba(55,48,163,.3);
+}
+.btn-add-inline:hover { background: #4F46E5; transform: translateY(-1px); }
+
+.btn-exit-edit {
+  background: none; border: 1.5px solid #fca5a5;
+  color: #dc2626; border-radius: 50px;
+  padding: 7px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .18s;
+}
+.btn-exit-edit:hover { background: #fee2e2; }
+
+.ap-edit {
+  background: #fffbeb; color: #92400e; border-color: #fde68a;
+  margin-left: auto;
+}
+.ap-edit:hover { background: #fef3c7; transform: translateY(-1px); }
+.ap-edit.active-edit {
+  background: #fef3c7; border-color: #f59e0b; color: #78350f;
+}
+
+/* Fila en modo edición */
+.att-row.edit-mode { grid-template-columns: 34px 1fr auto auto; }

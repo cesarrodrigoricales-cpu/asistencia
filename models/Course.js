@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
-  const Course = sequelize.define('Course', {
+  const Course = sequelize.define('course', {
     id: {
       type:          DataTypes.INTEGER,
       primaryKey:    true,
@@ -19,6 +19,8 @@ module.exports = (sequelize) => {
       type:      DataTypes.ENUM('primaria', 'secundaria'),
       allowNull: false
     }
+  }, {
+    tableName: 'Courses'
   });
 
   Course.associate = (models) => {

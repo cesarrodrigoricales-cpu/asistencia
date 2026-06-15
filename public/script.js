@@ -7,12 +7,12 @@ const API = '/api';
    ESTADO GLOBAL
    ============================================================ */
 let currentLevel   = 'primaria';
-let currentGrade   = null;   // chip seleccionado, ej: "1"
-let currentSection = 'A';    // chip seleccionado, ej: "A"
-let currentCourse  = null;   // objeto { id, name, teacher, level }
-let statusMap      = {};     // { studentId: 'presente'|'ausente'|'tardanza'|'ninguno' }
-let studentsCache  = [];     // alumnos cargados en pantalla 3
-let attendanceIds  = {};     // { studentId: attendanceRecordId } para hacer PUT en vez de POST
+let currentGrade   = null;
+let currentSection = 'A';
+let currentCourse  = null;
+let statusMap      = {};
+let studentsCache  = [];
+let attendanceIds  = {};
 
 /* ============================================================
    UTILIDADES
@@ -43,17 +43,14 @@ function goTo(dest) {
 
   if (dest === 'selector' || dest === 'inicio') {
     document.getElementById('screen-selector').classList.add('active');
-
   } else if (dest === 'primaria' || dest === 'secundaria') {
     currentLevel = dest;
     document.getElementById('grade-level-title').textContent =
       dest === 'primaria' ? 'Primaria' : 'Secundaria';
     buildGradeChips();
     document.getElementById('screen-grade').classList.add('active');
-
   } else if (dest === 'grade') {
     document.getElementById('screen-grade').classList.add('active');
-
   } else if (dest === 'attendance') {
     document.getElementById('screen-attendance').classList.add('active');
   }
@@ -63,29 +60,27 @@ function goTo(dest) {
    PANTALLA 2: CHIPS DE GRADO Y SECCIÓN
    ============================================================ */
 function buildGradeChips() {
-  const max   = currentLevel === 'primaria' ? 6 : 5;
-  const label = currentLevel === 'primaria' ? '°' : '°';
-  const cont  = document.getElementById('grade-chips');
+  const max  = currentLevel === 'primaria' ? 6 : 5;
+  const cont = document.getElementById('grade-chips');
   cont.innerHTML = '';
 
   for (let i = 1; i <= max; i++) {
     const btn = document.createElement('button');
-    btn.className    = 'chip chip-grade' + (i === 1 ? ' active-chip' : '');
+    btn.className     = 'chip chip-grade' + (i === 1 ? ' active-chip' : '');
     btn.dataset.grade = String(i);
-    btn.textContent  = i + label;
-    btn.onclick      = () => selectGrade(String(i));
+    btn.textContent   = i + '°';
+    btn.onclick       = () => selectGrade(String(i));
     cont.appendChild(btn);
   }
 
-  // Sección chips
   document.querySelectorAll('.chip-sec').forEach(b => {
     b.onclick = () => selectSection(b.dataset.sec);
   });
 
   currentGrade   = '1';
   currentSection = 'A';
-  markActiveChip('grade-chips',   '1',  'chip-grade');
-  markActiveChip('section-chips', 'A',  'chip-sec');
+  markActiveChip('grade-chips',   '1', 'chip-grade');
+  markActiveChip('section-chips', 'A', 'chip-sec');
   refreshGradeInfo();
 }
 
@@ -108,19 +103,15 @@ function selectSection(s) {
 }
 
 async function refreshGradeInfo() {
-  const label = currentLevel === 'primaria'
-    ? `${currentGrade}° ${currentSection} — Primaria`
-    : `${currentGrade}° ${currentSection} — Secundaria`;
-
+  const label = `${currentGrade}° ${currentSection} — ${currentLevel === 'primaria' ? 'Primaria' : 'Secundaria'}`;
   document.getElementById('gic-main').textContent  = label;
   document.getElementById('gic-sub').textContent   = 'Buscando alumnos…';
   document.getElementById('gic-badge').textContent = '…';
 
-  // Buscar curso que coincida con el nombre construido
   try {
-    const courses = await apiFetch(`/api/courses?level=${currentLevel}`);
+    const courses    = await apiFetch(`/api/courses?level=${currentLevel}`);
     const courseName = `${currentGrade}° ${currentSection}`;
-    currentCourse = courses.find(c =>
+    currentCourse    = courses.find(c =>
       c.name.trim().toLowerCase() === courseName.trim().toLowerCase()
     ) || null;
 
@@ -156,16 +147,14 @@ async function enterAttendance() {
   document.getElementById('att-date').textContent  = fmtDate(todayISO());
 
   try {
-    // Cargar alumnos
     studentsCache = await apiFetch(`/api/students/course/${currentCourse.id}`);
     statusMap     = {};
     attendanceIds = {};
 
-    // Cargar asistencias de hoy si ya existen
     const todayAtts = await apiFetch(`/api/attendance/date/${todayISO()}`);
     todayAtts.forEach(a => {
       if (studentsCache.some(s => s.id === a.studentId)) {
-        statusMap[a.studentId]    = a.status;
+        statusMap[a.studentId]     = a.status;
         attendanceIds[a.studentId] = a.id;
       }
     });
@@ -177,35 +166,200 @@ async function enterAttendance() {
   }
 }
 
+/* ============================================================
+   MODO EDICIÓN
+   ============================================================ */
+let editMode = false;
+
+function toggleEditMode() {
+  editMode = !editMode;
+  const bar     = document.getElementById('edit-mode-bar');
+  const btnEdit = document.getElementById('btn-toggle-edit');
+
+  if (bar) bar.style.display = editMode ? 'block' : 'none';
+  btnEdit.classList.toggle('active-edit', editMode);
+  btnEdit.textContent = editMode ? '✕ Salir edición' : '✏️ Editar lista';
+
+  renderAttList(studentsCache);
+  showToast(editMode ? '✏️ Modo edición activado' : '✅ Modo edición desactivado');
+}
+
+/* ============================================================
+   RENDER LISTA DE ALUMNOS
+   ============================================================ */
 function renderAttList(students) {
   const list = document.getElementById('att-list');
   list.innerHTML = '';
 
   students.forEach((s, i) => {
     const status = statusMap[s.id] || 'ninguno';
-    const div = document.createElement('div');
-    div.className  = `att-row status-${status}`;
-    div.id         = `row-${s.id}`;
-    div.innerHTML  = `
+    const div    = document.createElement('div');
+    div.className = `att-row status-${status}${editMode ? ' edit-mode' : ''}`;
+    div.id        = `row-${s.id}`;
+
+    const editBtns = editMode ? `
+      <button class="att-btn btn-edit" onclick="openEditStudent(${s.id})" title="Editar nombre">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+        </svg>
+      </button>
+      <button class="att-btn btn-del" onclick="confirmDeleteStudent(${s.id},'${s.name.replace(/'/g, "\\'")}')" title="Eliminar alumno">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+          <path d="M10 11v6M14 11v6"/>
+          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
+      </button>` : '';
+
+    div.innerHTML = `
       <div class="att-num">${i + 1}</div>
       <div class="att-name">${s.name}</div>
       <div class="att-btns">
-        <button class="att-btn btn-p ${status === 'presente'  ? 'active' : ''}"
+        <button class="att-btn btn-p ${status === 'presente' ? 'active' : ''}"
                 onclick="setStatus(${s.id},'presente')">P</button>
-        <button class="att-btn btn-a ${status === 'ausente'   ? 'active' : ''}"
+        <button class="att-btn btn-a ${status === 'ausente'  ? 'active' : ''}"
                 onclick="setStatus(${s.id},'ausente')">A</button>
-        <button class="att-btn btn-t ${status === 'tardanza'  ? 'active' : ''}"
+        <button class="att-btn btn-t ${status === 'tardanza' ? 'active' : ''}"
                 onclick="setStatus(${s.id},'tardanza')">T</button>
+        ${editBtns}
       </div>`;
     list.appendChild(div);
   });
 }
 
+/* ============================================================
+   MODAL AGREGAR / EDITAR ALUMNO
+   ============================================================ */
+function resetModalToAdd() {
+  document.querySelector('.modal-header h3').textContent = '➕ Nuevo alumno';
+  document.querySelector('.modal-btn-save').textContent  = 'Guardar alumno';
+  document.querySelector('.modal-btn-save').onclick      = saveNewStudent;
+}
+
+function openAddStudent() {
+  if (!currentCourse) { showToast('No hay sección seleccionada', 'err'); return; }
+  document.getElementById('modal-course-name').textContent =
+    `${currentGrade}° ${currentSection} — ${currentLevel === 'primaria' ? 'Primaria' : 'Secundaria'}`;
+  document.getElementById('modal-student-name').value = '';
+  resetModalToAdd();
+  document.getElementById('modal-add-student').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-student-name').focus(), 100);
+}
+
+function closeAddStudent() {
+  document.getElementById('modal-add-student').style.display = 'none';
+  resetModalToAdd();
+}
+
+async function saveNewStudent() {
+  const nameInput = document.getElementById('modal-student-name');
+  const name      = nameInput.value.trim().toUpperCase();
+  if (!name || name.length < 3) { showToast('Escribe el nombre completo', 'err'); nameInput.focus(); return; }
+
+  const exists = studentsCache.some(s => s.name.trim().toUpperCase() === name);
+  if (exists) { showToast('⚠️ Ese alumno ya existe en la lista', 'err'); return; }
+
+  try {
+    const nuevo = await apiFetch('/api/students', 'POST', {
+      name, courseId: currentCourse.id, level: currentLevel
+    }, 'Guardando alumno…');
+
+    studentsCache.push(nuevo);
+    statusMap[nuevo.id] = 'ninguno';
+    renderAttList(studentsCache);
+    updateStats(studentsCache);
+    closeAddStudent();
+    showToast(`✅ ${name} agregado a ${currentGrade}° ${currentSection}`);
+  } catch (e) {
+    showToast('Error al guardar: ' + e.message, 'err');
+  }
+}
+
+function openEditStudent(id) {
+  const student = studentsCache.find(s => s.id === id);
+  if (!student) return;
+  document.getElementById('modal-course-name').textContent =
+    `${currentGrade}° ${currentSection} — ${currentLevel === 'primaria' ? 'Primaria' : 'Secundaria'}`;
+  document.getElementById('modal-student-name').value = student.name;
+  document.querySelector('.modal-header h3').textContent  = '✏️ Editar alumno';
+  document.querySelector('.modal-btn-save').textContent   = 'Guardar cambios';
+  document.querySelector('.modal-btn-save').onclick       = () => saveEditStudent(id);
+  document.getElementById('modal-add-student').style.display = 'flex';
+  setTimeout(() => document.getElementById('modal-student-name').focus(), 100);
+}
+
+async function saveEditStudent(id) {
+  const nameInput = document.getElementById('modal-student-name');
+  const name      = nameInput.value.trim().toUpperCase();
+  if (!name || name.length < 3) { showToast('Escribe el nombre completo', 'err'); nameInput.focus(); return; }
+
+  const exists = studentsCache.some(s => s.name.trim().toUpperCase() === name && s.id !== id);
+  if (exists) { showToast('⚠️ Ya existe un alumno con ese nombre', 'err'); return; }
+
+  try {
+    await apiFetch(`/api/students/${id}`, 'PUT', {
+      name, courseId: currentCourse.id, level: currentLevel
+    }, 'Guardando cambios…');
+
+    const idx = studentsCache.findIndex(s => s.id === id);
+    if (idx !== -1) studentsCache[idx].name = name;
+    renderAttList(studentsCache);
+    updateStats(studentsCache);
+    closeAddStudent();
+    showToast('✏️ Nombre actualizado correctamente');
+  } catch (e) {
+    showToast('Error al editar: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   ELIMINAR ALUMNO
+   ============================================================ */
+function confirmDeleteStudent(id, name) {
+  document.getElementById('modal-del-name').textContent = name;
+  document.getElementById('modal-delete').style.display = 'flex';
+  document.getElementById('btn-confirm-del').onclick    = () => deleteStudent(id, name);
+}
+
+function closeDeleteModal() {
+  document.getElementById('modal-delete').style.display = 'none';
+}
+
+async function deleteStudent(id, name) {
+  try {
+    await apiFetch(`/api/students/${id}`, 'DELETE', null, 'Eliminando alumno…');
+    studentsCache = studentsCache.filter(s => s.id !== id);
+    delete statusMap[id];
+    delete attendanceIds[id];
+    renderAttList(studentsCache);
+    updateStats(studentsCache);
+    closeDeleteModal();
+    showToast(`🗑️ ${name} eliminado de la lista`);
+  } catch (e) {
+    showToast('Error al eliminar: ' + e.message, 'err');
+  }
+}
+
+/* ============================================================
+   CERRAR MODALES AL CLICK FUERA
+   ============================================================ */
+document.getElementById('modal-add-student').addEventListener('click', function(e) {
+  if (e.target === this) closeAddStudent();
+});
+document.getElementById('modal-delete').addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+
+/* ============================================================
+   ASISTENCIA: ESTADO Y STATS
+   ============================================================ */
 function setStatus(studentId, status) {
   statusMap[studentId] = status;
   const row = document.getElementById(`row-${studentId}`);
   if (row) {
-    row.className = `att-row status-${status}`;
+    row.className = `att-row status-${status}${editMode ? ' edit-mode' : ''}`;
     row.querySelectorAll('.att-btn').forEach(b => b.classList.remove('active'));
     const map = { presente: 'btn-p', ausente: 'btn-a', tardanza: 'btn-t' };
     row.querySelector('.' + map[status])?.classList.add('active');
@@ -220,7 +374,7 @@ function markAll(status) {
 }
 
 function updateStats(students) {
-  const total    = students.length;
+  const total     = students.length;
   const presentes = students.filter(s => statusMap[s.id] === 'presente').length;
   const ausentes  = students.filter(s => statusMap[s.id] === 'ausente').length;
   const tardanzas = students.filter(s => statusMap[s.id] === 'tardanza').length;
@@ -234,13 +388,10 @@ function updateStats(students) {
 }
 
 /* ============================================================
-   GUARDAR ASISTENCIAS (POST o PUT según exista)
+   GUARDAR ASISTENCIAS
    ============================================================ */
 async function saveAttendance() {
-  if (!studentsCache.length) {
-    showToast('No hay alumnos cargados', 'err');
-    return;
-  }
+  if (!studentsCache.length) { showToast('No hay alumnos cargados', 'err'); return; }
 
   const date = todayISO();
   let ok = 0, err = 0;
@@ -248,50 +399,35 @@ async function saveAttendance() {
   const promises = studentsCache.map(async s => {
     const status = statusMap[s.id] || 'ninguno';
     if (status === 'ninguno') return;
-
     try {
       if (attendanceIds[s.id]) {
-        await apiFetch(`/api/attendance/${attendanceIds[s.id]}`, 'PUT', {
-          status, date, studentId: s.id
-        });
+        await apiFetch(`/api/attendance/${attendanceIds[s.id]}`, 'PUT', { status, date, studentId: s.id });
       } else {
-        const created = await apiFetch('/api/attendance', 'POST', {
-          status, date, studentId: s.id
-        });
+        const created = await apiFetch('/api/attendance', 'POST', { status, date, studentId: s.id });
         attendanceIds[s.id] = created.id;
       }
       ok++;
-    } catch (e) {
-      err++;
-    }
+    } catch (e) { err++; }
   });
 
   await Promise.all(promises);
-
-  if (err === 0) {
-    showToast(`✅ ${ok} asistencias guardadas correctamente`);
-  } else {
-    showToast(`⚠️ ${ok} guardadas, ${err} con error`, 'err');
-  }
+  showToast(err === 0 ? `✅ ${ok} asistencias guardadas` : `⚠️ ${ok} guardadas, ${err} con error`, err > 0 ? 'err' : 'ok');
 }
 
 /* ============================================================
-   EXPORTAR CSV / EXCEL
+   EXPORTAR EXCEL
    ============================================================ */
 function exportAttendance() {
-  if (!studentsCache.length) {
-    showToast('No hay datos para exportar', 'err');
-    return;
-  }
+  if (!studentsCache.length) { showToast('No hay datos para exportar', 'err'); return; }
 
   const rows = studentsCache.map((s, i) => ({
-    '#':        i + 1,
-    'Nombre':   s.name,
-    'Estado':   statusMap[s.id] || 'sin marcar',
-    'Fecha':    todayISO(),
-    'Grado':    `${currentGrade}° ${currentSection}`,
-    'Nivel':    currentLevel,
-    'Docente':  currentCourse?.teacher || ''
+    '#':       i + 1,
+    'Nombre':  s.name,
+    'Estado':  statusMap[s.id] || 'sin marcar',
+    'Fecha':   todayISO(),
+    'Grado':   `${currentGrade}° ${currentSection}`,
+    'Nivel':   currentLevel,
+    'Docente': currentCourse?.teacher || ''
   }));
 
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -302,7 +438,101 @@ function exportAttendance() {
 }
 
 /* ============================================================
-   IMPORTAR CSV / EXCEL (pantalla selector — global)
+   EXTRACTOR DE ALUMNOS DESDE HOJA EXCEL
+   ============================================================ */
+function extractStudentsFromSheet(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  const students = [];
+  const seen = new Set();
+
+  // Estrategia 1: col B = número orden, col C = nombre
+  for (const row of rows) {
+    const num  = row[1];
+    const name = row[2];
+    if (
+      typeof num  === 'number' && num >= 1 &&
+      typeof name === 'string' && name.trim().length > 3 &&
+      !name.toLowerCase().includes('apellido') &&
+      !name.toLowerCase().includes('nombre') &&
+      !name.toLowerCase().includes('alumno')
+    ) {
+      const clean = name.trim();
+      if (!seen.has(clean.toLowerCase())) {
+        seen.add(clean.toLowerCase());
+        students.push(clean);
+      }
+    }
+  }
+  if (students.length > 0) return students;
+
+  // Estrategia 2: encabezados SIAGIE / CSV simple
+  const headerKeywords = ['apellido', 'nombre', 'name', 'alumno'];
+  let nameColIndex = -1;
+  let dataStartRow = -1;
+
+  for (let r = 0; r < Math.min(rows.length, 20); r++) {
+    const row = rows[r];
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (headerKeywords.some(k => cell.includes(k))) {
+        nameColIndex = c;
+        dataStartRow = r + 1;
+        break;
+      }
+    }
+    if (nameColIndex !== -1) break;
+  }
+
+  if (nameColIndex !== -1) {
+    for (let r = dataStartRow; r < rows.length; r++) {
+      const name = rows[r][nameColIndex];
+      if (typeof name === 'string' && name.trim().length > 3) {
+        const clean = name.trim();
+        if (!seen.has(clean.toLowerCase())) {
+          seen.add(clean.toLowerCase());
+          students.push(clean);
+        }
+      }
+    }
+  }
+
+  return students;
+}
+
+/* ============================================================
+   PARSER NOMBRE DE HOJA → { grade, section }
+   ============================================================ */
+function parseSheetName(name) {
+  const n = name.trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const words = {
+    'primero': 1, 'segundo': 2, 'tercero': 3,
+    'cuarto':  4, 'quinto':  5, 'sexto':   6,
+    'primer':  1, 'tercer':  3
+  };
+
+  let grade = null, section = null;
+
+  const numMatch = n.match(/^(\d)[°º]?\s*([a-f])/);
+  if (numMatch) {
+    grade   = parseInt(numMatch[1]);
+    section = numMatch[2].toUpperCase();
+  } else {
+    for (const [word, num] of Object.entries(words)) {
+      if (n.includes(word)) { grade = num; break; }
+    }
+    const secMatch = n.match(/\b([a-f])\b/);
+    if (secMatch) section = secMatch[1].toUpperCase();
+  }
+
+  if (!grade || !section || grade < 1 || grade > 6) return null;
+  return { grade, section };
+}
+
+/* ============================================================
+   IMPORTAR EXCEL — PANTALLA PRINCIPAL (modo global)
    ============================================================ */
 async function handleFileImport(input) {
   const file = input.files[0];
@@ -317,7 +547,6 @@ async function handleFileImport(input) {
     return;
   }
 
-  // Cargar todos los cursos de primaria una sola vez
   let courses;
   try {
     courses = await apiFetch('/api/courses?level=primaria');
@@ -326,210 +555,168 @@ async function handleFileImport(input) {
     return;
   }
 
+  const validSheets = wb.SheetNames.filter(sn =>
+    extractStudentsFromSheet(wb.Sheets[sn]).length > 0
+  );
+
+  if (validSheets.length === 0) {
+    showToast('No se encontraron alumnos en el archivo', 'err');
+    input.value = '';
+    return;
+  }
+
   let totalOk = 0, totalSkip = 0, totalErr = 0;
   const log = [];
 
-  for (const sheetName of wb.SheetNames) {
-    // ── Detectar grado y sección del nombre de la hoja ──
+  for (const sheetName of validSheets) {
     const parsed = parseSheetName(sheetName);
+
     if (!parsed) {
-      log.push(`⚠️ Hoja "${sheetName}" ignorada (no se reconoció)`);
+      const names = extractStudentsFromSheet(wb.Sheets[sheetName]);
+      log.push(`⚠️ Hoja "<b>${sheetName}</b>": ${names.length} alumnos detectados pero no se reconoció el grado/sección.`);
       continue;
     }
 
     const { grade, section } = parsed;
     const courseName = `${grade}° ${section}`;
-
-    // Buscar curso en BD
     const course = courses.find(c =>
       c.name.trim().toLowerCase() === courseName.trim().toLowerCase()
     );
     if (!course) {
-      log.push(`⚠️ "${sheetName}" → ${courseName} no existe en BD`);
+      log.push(`⚠️ <b>${courseName}</b> (hoja "${sheetName}"): no existe en la base de datos`);
       continue;
     }
 
-    // Leer alumnos de la hoja
-    const ws      = wb.Sheets[sheetName];
-    const rows    = XLSX.utils.sheet_to_json(ws);
-    if (!rows.length) {
-      log.push(`➖ "${sheetName}" está vacía`);
-      continue;
-    }
-
-    // Obtener alumnos ya existentes en ese curso
+    const names = extractStudentsFromSheet(wb.Sheets[sheetName]);
     let existing = [];
-    try {
-      existing = await apiFetch(`/api/students/course/${course.id}`);
-    } catch (e) { /* si falla seguimos igual */ }
+    try { existing = await apiFetch(`/api/students/course/${course.id}`); } catch (_) {}
 
+    const existingNames = new Set(existing.map(s => s.name.trim().toLowerCase()));
     let ok = 0, skip = 0;
-    for (const row of rows) {
-      const name =
-        row.name   || row.nombre || row.Nombre || row.NAME ||
-        row['Apellidos y nombres'] || row['APELLIDOS Y NOMBRES'] ||
-        row['Apellidos y Nombres'];
 
-      if (!name) continue;
-
-      const nameClean = String(name).trim();
-
-      // No duplicar
-      const yaExiste = existing.some(s =>
-        s.name.trim().toLowerCase() === nameClean.toLowerCase()
-      );
-      if (yaExiste) { skip++; continue; }
-
+    for (const nameClean of names) {
+      if (existingNames.has(nameClean.toLowerCase())) { skip++; continue; }
       try {
         await apiFetch('/api/students', 'POST', {
-          name:     nameClean,
-          courseId: course.id,
-          level:    'primaria'
+          name: nameClean, courseId: course.id, level: 'primaria'
         });
+        existingNames.add(nameClean.toLowerCase());
         ok++;
-      } catch (e) { totalErr++; }
+      } catch (_) { totalErr++; }
     }
 
     totalOk   += ok;
     totalSkip += skip;
-    log.push(`✅ ${courseName}: ${ok} importados, ${skip} ya existían`);
+    log.push(`✅ <b>${courseName}</b>: ${ok} importados, ${skip} ya existían`);
   }
 
-  // Mostrar resultado
   const preview = document.getElementById('import-preview');
-  preview.style.display = 'block';
-  preview.innerHTML =
-    `<b>Importación completada</b><br>` +
-    `✅ ${totalOk} alumnos nuevos &nbsp;|&nbsp; ➖ ${totalSkip} duplicados &nbsp;|&nbsp; ❌ ${totalErr} errores<br><br>` +
-    log.map(l => `${l}`).join('<br>');
+  if (preview) {
+    preview.style.display = 'block';
+    preview.innerHTML =
+      `<b>Importación completada</b><br>` +
+      `✅ ${totalOk} alumnos nuevos &nbsp;|&nbsp; ➖ ${totalSkip} duplicados &nbsp;|&nbsp; ❌ ${totalErr} errores<br><br>` +
+      log.join('<br>');
+  }
 
   showToast(totalOk > 0 ? `✅ ${totalOk} alumnos importados` : '➖ Sin alumnos nuevos');
   input.value = '';
 }
 
-/* ── Parser flexible de nombres de hoja ── */
-function parseSheetName(name) {
-  const n = name.trim()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-
-  // Tomar solo la parte ANTES del primer guión, espacio largo, o texto extra
-  // Ej: "2A-ABRIL" → "2A", "4AJANET" → "4A", "5C -mayo" → "5C"
-  const clean = n
-    .replace(/-.*$/, '')        // quitar todo desde el primer guión
-    .replace(/\s.*$/, '')       // quitar todo desde el primer espacio
-    .trim();
-
-  const words = {
-    'primero': 1, 'segundo': 2, 'tercero': 3,
-    'cuarto':  4, 'quinto':  5, 'sexto':   6,
-    'primer':  1, 'tercer':  3
-  };
-
-  let grade   = null;
-  let section = null;
-
-  // Número directo al inicio (ej: "1a", "2b", "6c")
-  const numMatch = clean.match(/^(\d)/);
-  if (numMatch) {
-    grade = parseInt(numMatch[1]);
-    // Sección: primera letra después del número (y símbolos °º)
-    const secMatch = clean.match(/^\d[°º]?\s*([a-f])/);
-    if (secMatch) section = secMatch[1].toUpperCase();
-  } else {
-    // Palabra escrita (ej: "primero a", "sexto b")
-    for (const [word, num] of Object.entries(words)) {
-      if (n.includes(word)) { grade = num; break; }
-    }
-    const secMatch = n.match(/\b([a-f])\b/);
-    if (secMatch) section = secMatch[1].toUpperCase();
-  }
-
-  if (!grade || !section || grade < 1 || grade > 6) return null;
-  return { grade, section };
-}
-
 /* ============================================================
-   IMPORTAR CSV / EXCEL (pantalla grado — específico)
+   IMPORTAR EXCEL — PANTALLA DE GRADO (modo individual)
    ============================================================ */
 async function handleGradeImport(input) {
   const file = input.files[0];
-  if (!file || !currentCourse) {
-    showToast('Selecciona primero un grado/sección válido', 'err');
+  if (!file) { showToast('Selecciona un archivo', 'err'); return; }
+  if (!currentCourse) { showToast('Selecciona primero un grado/sección válido', 'err'); return; }
+
+  let wb;
+  try {
+    const data = await file.arrayBuffer();
+    wb = XLSX.read(data, { type: 'array' });
+  } catch (e) {
+    showToast('Archivo inválido o corrupto', 'err');
     return;
   }
 
-  const data = await readExcelFile(file);
-  if (!data.length) { showToast('Archivo vacío', 'err'); return; }
+  const expectedName = `${currentGrade}° ${currentSection}`.toLowerCase();
+  let targetSheetName = wb.SheetNames.find(sn => {
+    const p = parseSheetName(sn);
+    return p && `${p.grade}° ${p.section}`.toLowerCase() === expectedName;
+  });
 
-  let ok = 0;
-  for (const row of data) {
-    // Acepta columna "name", "nombre", o "Apellidos y nombres" del SIAGIE
-    const name = row.name || row.nombre || row.Nombre || row.NAME
-      || row['Apellidos y nombres'] || row['APELLIDOS Y NOMBRES']
-      || row['Apellidos y Nombres'];
-
-    if (!name) continue;
-
-    // Verificar si ya existe para no duplicar
-    const yaExiste = studentsCache.some(s =>
-      s.name.trim().toLowerCase() === String(name).trim().toLowerCase()
+  if (!targetSheetName) {
+    targetSheetName = wb.SheetNames.find(sn =>
+      extractStudentsFromSheet(wb.Sheets[sn]).length > 0
     );
-    if (yaExiste) continue;
-
-    try {
-      await apiFetch('/api/students', 'POST', {
-        name: String(name).trim(),
-        courseId: currentCourse.id,
-        level: currentLevel
-      });
-      ok++;
-    } catch (e) { /* ignorar */ }
   }
 
-  showToast(ok > 0 ? `✅ ${ok} alumnos importados` : '➖ Sin alumnos nuevos');
+  if (!targetSheetName) {
+    showToast('No se encontraron alumnos en el archivo', 'err');
+    input.value = '';
+    return;
+  }
+
+  const names = extractStudentsFromSheet(wb.Sheets[targetSheetName]);
+  if (!names.length) {
+    showToast('El archivo no contiene alumnos reconocibles', 'err');
+    input.value = '';
+    return;
+  }
+
+  const existingNames = new Set(studentsCache.map(s => s.name.trim().toLowerCase()));
+  let ok = 0, skip = 0;
+
+  for (const nameClean of names) {
+    if (existingNames.has(nameClean.toLowerCase())) { skip++; continue; }
+    try {
+      await apiFetch('/api/students', 'POST', {
+        name: nameClean, courseId: currentCourse.id, level: currentLevel
+      });
+      existingNames.add(nameClean.toLowerCase());
+      ok++;
+    } catch (_) { /* ignorar */ }
+  }
+
+  showToast(ok > 0
+    ? `✅ ${ok} alumnos importados a ${currentGrade}° ${currentSection}${skip ? ` (${skip} ya existían)` : ''}`
+    : `➖ Sin alumnos nuevos — ${skip} ya existían`);
+
   refreshGradeInfo();
   input.value = '';
-}
-
-function readExcelFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      try {
-        const wb   = XLSX.read(e.target.result, { type: 'binary' });
-        const ws   = wb.Sheets[wb.SheetNames[0]];
-        const data = XLSX.utils.sheet_to_json(ws);
-        resolve(data);
-      } catch (err) { reject(err); }
-    };
-    reader.onerror = reject;
-    reader.readAsBinaryString(file);
-  });
 }
 
 /* ============================================================
    HELPER API FETCH
    ============================================================ */
-async function apiFetch(url, method = 'GET', body = null) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' }
-  };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(url, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `HTTP ${res.status}`);
+async function apiFetch(url, method = 'GET', body = null, loadingMsg = null) {
+  const overlay     = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+
+  if (loadingMsg && overlay) {
+    loadingText.textContent = loadingMsg;
+    overlay.style.display   = 'flex';
   }
-  return res.json();
+
+  try {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(url, opts);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  } finally {
+    if (overlay) overlay.style.display = 'none';
+  }
 }
 
 /* ============================================================
    HELPER: getStudents (usado por el chat)
    ============================================================ */
-function getStudents(level, grade, section) {
-  // El chat llama a esto sincrónicamente — devolvemos la cache
+function getStudents() {
   return studentsCache;
 }
 
@@ -603,17 +790,14 @@ function fcQuick(text) {
   fcShowTyping();
   setTimeout(() => {
     fcRemoveTyping();
-    const resp = fcGetResponse(text);
-    fcAddMsg('bot', resp);
+    fcAddMsg('bot', fcGetResponse(text));
   }, 600);
 }
 
 function fcGetResponse(query) {
   const q = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
   const enAsistencias = document.getElementById('screen-attendance').classList.contains('active');
 
-  // ---- AYUDA ----
   if (q.includes('que puedes') || q.includes('ayuda') || q.includes('comandos')) {
     return `Puedo hacer estas cosas:<br><br>
 <b>📋 Asistencia:</b><br>
@@ -633,7 +817,6 @@ function fcGetResponse(query) {
 <span class="fc-action-pill" onclick="fcQuick('Exportar lista')">Exportar Excel</span>`;
   }
 
-  // ---- NAVEGAR ----
   if (!enAsistencias) {
     if (q.includes('primaria') && (q.includes('ir') || q.includes('abrir') || q.includes('entrar') || q.includes('ve a'))) {
       setTimeout(() => goTo('primaria'), 400);
@@ -650,7 +833,6 @@ function fcGetResponse(query) {
 
   const students = getStudents();
 
-  // ---- MARCAR TODOS ----
   if ((q.includes('todos') || q.includes('tod@s')) && q.includes('present')) {
     markAll('presente');
     return `✅ Marqué a los ${students.length} alumnos como <b>presentes</b>.`;
@@ -664,12 +846,11 @@ function fcGetResponse(query) {
     return '🔄 Lista reiniciada.';
   }
 
-  // ---- MARCAR ALUMNO INDIVIDUAL ----
   if (q.includes('marca') || q.includes('pon a') || q.includes('cambia a')) {
     let targetStatus = null;
-    if (q.includes('present'))                          targetStatus = 'presente';
-    else if (q.includes('ausent') || q.includes('falt')) targetStatus = 'ausente';
-    else if (q.includes('tard'))                        targetStatus = 'tardanza';
+    if (q.includes('present'))                             targetStatus = 'presente';
+    else if (q.includes('ausent') || q.includes('falt'))   targetStatus = 'ausente';
+    else if (q.includes('tard'))                           targetStatus = 'tardanza';
 
     if (targetStatus) {
       const matched = findStudentByName(q, students);
@@ -689,7 +870,6 @@ function fcGetResponse(query) {
     }
   }
 
-  // ---- CONSULTAS ----
   const presentes = students.filter(s => statusMap[s.id] === 'presente');
   const ausentes  = students.filter(s => statusMap[s.id] === 'ausente');
   const tardanzas = students.filter(s => statusMap[s.id] === 'tardanza');
@@ -723,8 +903,6 @@ function fcGetResponse(query) {
   if (q.includes('cuantos') || q.includes('total') || q.includes('cuántos')) {
     return `Hay <b>${students.length} alumnos</b> en esta lista.`;
   }
-
-  // ---- GUARDAR / EXPORTAR ----
   if (q.includes('guarda') || q.includes('guardar')) {
     saveAttendance();
     return '💾 Guardando asistencias…';
@@ -734,7 +912,6 @@ function fcGetResponse(query) {
     return '📥 Exportando archivo Excel…';
   }
 
-  // ---- BUSCAR ALUMNO ----
   const encontrado = findStudentByName(q, students);
   if (encontrado.length === 1) {
     const s  = encontrado[0];
@@ -767,7 +944,6 @@ function fcMarkStudent(id, status) {
   fcAddMsg('bot', `${icons[status]} <b>${s ? s.name : 'Alumno'}</b> marcado como <b>${status}</b>.`);
 }
 
-// Badge al cargar
 window.addEventListener('load', () => {
   const badge = document.getElementById('fab-badge');
   if (badge) badge.style.display = 'flex';
