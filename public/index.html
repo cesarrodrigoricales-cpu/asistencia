@@ -20,6 +20,46 @@
       <div class="deco-shape s2"></div>
       <div class="deco-shape s3"></div>
     </div>
+
+    <div class="teacher-cloud-wrap">
+      <svg class="teacher-cloud-svg" viewBox="0 0 260 190" xmlns="http://www.w3.org/2000/svg">
+        <ellipse class="tc-cloud-shadow" cx="130" cy="150" rx="92" ry="14"></ellipse>
+        <g class="tc-cloud">
+          <ellipse cx="70" cy="118" rx="38" ry="26"></ellipse>
+          <ellipse cx="118" cy="100" rx="50" ry="34"></ellipse>
+          <ellipse cx="172" cy="120" rx="40" ry="26"></ellipse>
+          <ellipse cx="100" cy="132" rx="46" ry="20"></ellipse>
+          <ellipse cx="160" cy="134" rx="40" ry="18"></ellipse>
+          <circle class="tc-cloud-eye" cx="98" cy="112" r="4"></circle>
+          <circle class="tc-cloud-eye" cx="138" cy="112" r="4"></circle>
+          <path class="tc-cloud-mouth" d="M104 124 Q118 132 132 124" fill="none"></path>
+          <ellipse class="tc-cloud-cheek" cx="88" cy="120" rx="6" ry="4"></ellipse>
+          <ellipse class="tc-cloud-cheek" cx="148" cy="120" rx="6" ry="4"></ellipse>
+        </g>
+        <g class="tc-teacher" transform="translate(0, 6)">
+          <ellipse class="tc-shadow" cx="118" cy="124" rx="24" ry="5"></ellipse>
+          <path class="tc-skirt" d="M94 98 Q118 86 142 98 L148 120 Q118 130 88 120 Z"></path>
+          <rect class="tc-body" x="103" y="70" width="30" height="34" rx="13"></rect>
+          <path class="tc-armR" d="M130 80 Q144 84 146 96" fill="none"></path>
+          <rect class="tc-book" x="136" y="90" width="20" height="15" rx="2"></rect>
+          <line class="tc-book-line" x1="146" y1="90" x2="146" y2="105"></line>
+          <path class="tc-armL" d="M106 80 Q92 84 90 96" fill="none"></path>
+          <circle class="tc-head" cx="118" cy="58" r="17"></circle>
+          <path class="tc-hair" d="M101 54 Q100 34 118 32 Q136 34 135 54 Q132 42 118 40 Q104 42 101 54 Z"></path>
+          <ellipse class="tc-bun" cx="118" cy="30" rx="8" ry="7"></ellipse>
+          <circle class="tc-eye" cx="111" cy="58" r="1.8"></circle>
+          <circle class="tc-eye" cx="125" cy="58" r="1.8"></circle>
+          <path class="tc-smile" d="M110 64 Q118 69 126 64" fill="none"></path>
+          <ellipse class="tc-cheek" cx="105" cy="61" rx="3.5" ry="2.5"></ellipse>
+          <ellipse class="tc-cheek" cx="131" cy="61" rx="3.5" ry="2.5"></ellipse>
+        </g>
+      </svg>
+      <div class="tc-bubble">¡Un día más de aventuras educativas! <span class="tc-bubble-spark">★</span></div>
+      <span class="tc-star star-a">★</span>
+      <span class="tc-star star-b">★</span>
+      <span class="tc-star star-c">✦</span>
+    </div>
+
     <div class="sel-inner">
       <div class="brand">
         <div class="brand-icon">
@@ -75,11 +115,28 @@
     </div>
   </div>
 
-  <!-- PANTALLA 2: GRADO/SECCIÓN -->
+ <!-- ============================================================
+     PANTALLA 2: GRADO/SECCIÓN — FRAGMENTO REEMPLAZABLE
+     Reemplaza el <div id="screen-grade" ...> existente por esto
+     ============================================================ -->
+
   <div id="screen-grade" class="screen">
+
+    <!-- Nubes decorativas (igual que pantalla 1) -->
+    <div class="grade-deco">
+      <div class="grade-cloud gc1"></div>
+      <div class="grade-cloud gc2"></div>
+      <div class="grade-cloud gc3"></div>
+    </div>
+    <span class="grade-star gstar-a">★</span>
+    <span class="grade-star gstar-b">★</span>
+    <span class="grade-star gstar-c">✦</span>
+
     <div class="grade-header">
-      <button class="back-pill" onclick="goTo('selector')">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 16l-6-6 6-6"/></svg>
+      <button class="back-pill light" onclick="goTo('selector')">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M13 16l-6-6 6-6"/>
+        </svg>
         Volver
       </button>
       <div class="grade-title-wrap">
@@ -89,51 +146,70 @@
     </div>
 
     <div class="grade-body">
-      <div class="grade-selector-row">
-        <div class="selector-group">
-          <label class="sel-label">Grado</label>
-          <div class="grade-chips" id="grade-chips"></div>
-        </div>
-        <div class="selector-group">
-          <label class="sel-label">Sección</label>
-          <div class="section-chips" id="section-chips">
-            <button class="chip chip-sec active-chip" data-sec="A">A</button>
-            <button class="chip chip-sec" data-sec="B">B</button>
-            <button class="chip chip-sec" data-sec="C">C</button>
-          
+
+      <!-- Título hero tipo pantalla 1 -->
+      <div class="grade-hero">
+        <h3>¿Cuál es tu aula? 🎒</h3>
+        <p>Elige el grado y la sección para empezar<br>el registro de asistencia</p>
+      </div>
+
+      <!-- Tarjeta blanca con selectores -->
+      <div class="grade-card">
+
+        <div class="grade-selector-row">
+          <div class="selector-group">
+            <label class="sel-label">📚 Grado</label>
+            <div class="grade-chips" id="grade-chips"></div>
+          </div>
+          <div class="selector-group">
+            <label class="sel-label">🏷️ Sección</label>
+            <div class="section-chips" id="section-chips">
+              <button class="chip chip-sec active-chip" data-sec="A">A</button>
+              <button class="chip chip-sec" data-sec="B">B</button>
+              <button class="chip chip-sec" data-sec="C">C</button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="grade-info-card" id="grade-info-card">
-        <div class="gic-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
-            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
-          </svg>
+        <!-- Info card -->
+        <div class="grade-info-card" id="grade-info-card">
+          <div class="gic-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+          </div>
+          <div>
+            <div class="gic-main" id="gic-main">Selecciona grado y sección</div>
+            <div class="gic-sub" id="gic-sub">Los alumnos se cargarán automáticamente</div>
+          </div>
+          <div class="gic-badge" id="gic-badge">0 alumnos</div>
         </div>
-        <div>
-          <div class="gic-main" id="gic-main">Selecciona grado y sección</div>
-          <div class="gic-sub" id="gic-sub">Los alumnos se cargarán automáticamente</div>
+
+        <!-- Importar CSV -->
+        <div class="grade-upload-row">
+          <button class="upload-btn-sm" onclick="document.getElementById('csv-grade').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+            </svg>
+            Importar CSV / Excel para este grado
+          </button>
+          <input type="file" id="csv-grade" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleGradeImport(this)">
         </div>
-        <div class="gic-badge" id="gic-badge">0 alumnos</div>
-      </div>
 
-      <div class="grade-upload-row">
-        <button class="upload-btn-sm" onclick="document.getElementById('csv-grade').click()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          Importar CSV / Excel para este grado
-        </button>
-        <input type="file" id="csv-grade" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleGradeImport(this)">
-      </div>
+      </div><!-- /grade-card -->
 
+      <!-- Botón principal (naranja, como CTA de pantalla 1) -->
       <button class="btn-confirm-grade" id="btn-confirm-grade" onclick="enterAttendance()">
-        Ir al registro de asistencia
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M7 4l6 6-6 6"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+        </svg>
+        ¡Ir al registro de asistencia!
       </button>
-    </div>
-  </div>
+
+    </div><!-- /grade-body -->
+  </div><!-- /screen-grade -->
 
   <!-- PANTALLA 3: ASISTENCIAS -->
   <div id="screen-attendance" class="screen">
