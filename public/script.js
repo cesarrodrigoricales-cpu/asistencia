@@ -25,8 +25,18 @@ function showToast(msg, type = 'ok') {
   t._timer = setTimeout(() => t.classList.remove('show'), 3000);
 }
 
+/* ============================================================
+   BUG #1 CORREGIDO — todayISO usa hora LOCAL en vez de UTC
+   Antes: new Date().toISOString().slice(0,10) devuelve fecha UTC
+   lo que en Perú (UTC-5) causa que después de las 7pm aparezca
+   la fecha de mañana en las asistencias guardadas.
+   ============================================================ */
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  const d   = new Date();
+  const y   = d.getFullYear();
+  const m   = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function fmtDate(iso) {
@@ -141,6 +151,14 @@ async function enterAttendance() {
     showToast('Ese grado/sección no existe. Verifica la base de datos.', 'err');
     return;
   }
+
+  /* --------------------------------------------------------
+     BUG #5 CORREGIDO — modo edición persistía al cambiar sección
+     Antes: editMode no se reseteaba al entrar a una nueva lista,
+     lo que causaba que la lista nueva se mostrara en modo edición
+     sin que el docente lo hubiera activado.
+     -------------------------------------------------------- */
+  if (editMode) toggleEditMode();
 
   goTo('attendance');
 
@@ -447,7 +465,6 @@ function extractStudentsFromSheet(ws) {
   const students = [];
   const seen = new Set();
 
-  // Estrategia 1: col B = número orden, col C = nombre
   for (const row of rows) {
     const num  = row[1];
     const name = row[2];
@@ -467,7 +484,6 @@ function extractStudentsFromSheet(ws) {
   }
   if (students.length > 0) return students;
 
-  // Estrategia 2: encabezados SIAGIE / CSV simple
   const headerKeywords = ['apellido', 'nombre', 'name', 'alumno'];
   let nameColIndex = -1;
   let dataStartRow = -1;
@@ -501,10 +517,9 @@ function extractStudentsFromSheet(ws) {
   return students;
 }
 
-/* ============================================================
-   PARSER NOMBRE DE HOJA → { grade, section }
-   ============================================================ */
-function parseSheetName(name) {
+function parseSheetName(name, level = 'primaria') {
+  const maxGrade = level === 'secundaria' ? 5 : 6;
+
   const n = name.trim()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
@@ -529,7 +544,7 @@ function parseSheetName(name) {
     if (secMatch) section = secMatch[1].toUpperCase();
   }
 
-  if (!grade || !section || grade < 1 || grade > 6) return null;
+  if (!grade || !section || grade < 1 || grade > maxGrade) return null;
   return { grade, section };
 }
 
@@ -551,7 +566,7 @@ async function handleFileImport(input) {
 
   let courses;
   try {
-    courses = await apiFetch('/api/courses?level=primaria');
+    courses = await apiFetch(`/api/courses?level=${currentLevel}`);
   } catch (e) {
     showToast('Error al conectar con la base de datos', 'err');
     return;
@@ -571,7 +586,8 @@ async function handleFileImport(input) {
   const log = [];
 
   for (const sheetName of validSheets) {
-    const parsed = parseSheetName(sheetName);
+    /* BUG #4 — pasar currentLevel a parseSheetName */
+    const parsed = parseSheetName(sheetName, currentLevel);
 
     if (!parsed) {
       const names = extractStudentsFromSheet(wb.Sheets[sheetName]);
@@ -600,7 +616,7 @@ async function handleFileImport(input) {
       if (existingNames.has(nameClean.toLowerCase())) { skip++; continue; }
       try {
         await apiFetch('/api/students', 'POST', {
-          name: nameClean, courseId: course.id, level: 'primaria'
+          name: nameClean, courseId: course.id, level: currentLevel
         });
         existingNames.add(nameClean.toLowerCase());
         ok++;
@@ -644,7 +660,8 @@ async function handleGradeImport(input) {
 
   const expectedName = `${currentGrade}° ${currentSection}`.toLowerCase();
   let targetSheetName = wb.SheetNames.find(sn => {
-    const p = parseSheetName(sn);
+    /* BUG #4 — pasar currentLevel a parseSheetName */
+    const p = parseSheetName(sn, currentLevel);
     return p && `${p.grade}° ${p.section}`.toLowerCase() === expectedName;
   });
 
@@ -733,7 +750,7 @@ function enterHistory() {
 
   const dateInput = document.getElementById('hist-date-input');
   dateInput.value = todayISO();
-  dateInput.max   = todayISO(); // no se puede ver "futuro"
+  dateInput.max   = todayISO();
 
   goTo('history');
   loadHistoryDate(todayISO());
@@ -741,6 +758,14 @@ function enterHistory() {
 
 async function loadHistoryDate(dateStr) {
   if (!dateStr || !currentCourse) return;
+
+  if (!studentsCache.length && currentCourse) {
+    try {
+      studentsCache = await apiFetch(`/api/students/course/${currentCourse.id}`);
+    } catch (e) {
+      /* si falla la carga, el historial mostrará lista vacía */
+    }
+  }
 
   const listEl  = document.getElementById('hist-list');
   const statsEl = document.getElementById('hist-stats-bar');
@@ -795,6 +820,216 @@ async function loadHistoryDate(dateStr) {
   } catch (e) {
     listEl.innerHTML = '<div class="hist-empty">⚠️ Error al cargar el historial.</div>';
   }
+}
+
+/* ============================================================
+   EXPORTAR HISTORIAL — DÍA SELECCIONADO
+   Genera un Excel con la asistencia del día visible en pantalla.
+   Una fila por alumno: número, nombre, estado, fecha, grado.
+   ============================================================ */
+async function exportHistoryDay() {
+  const dateStr = document.getElementById('hist-date-input')?.value;
+  if (!dateStr) { showToast('Selecciona una fecha primero', 'err'); return; }
+  if (!studentsCache.length) { showToast('No hay alumnos cargados', 'err'); return; }
+
+  let atts = [];
+  try {
+    atts = await apiFetch(`/api/attendance/date/${dateStr}`);
+  } catch (e) {
+    showToast('Error al obtener los datos', 'err');
+    return;
+  }
+
+  const idsEnCurso = new Set(studentsCache.map(s => s.id));
+  const map = {};
+  atts.forEach(a => { if (idsEnCurso.has(a.studentId)) map[a.studentId] = a.status; });
+
+  const hayDatos = studentsCache.some(s => map[s.id]);
+  if (!hayDatos) {
+    showToast(`No hay asistencia guardada para el ${fmtDate(dateStr)}`, 'err');
+    return;
+  }
+
+  const etiquetas = { presente: 'Presente', ausente: 'Ausente', tardanza: 'Tardanza' };
+  const nivel     = currentLevel === 'primaria' ? 'Primaria' : 'Secundaria';
+  const grado     = `${currentGrade}° ${currentSection}`;
+
+  const rows = studentsCache.map((s, i) => ({
+    '#':       i + 1,
+    'Apellidos y Nombres': s.name,
+    'Estado':  etiquetas[map[s.id]] || 'Sin registrar',
+    'Fecha':   fmtDate(dateStr),
+    'Grado':   grado,
+    'Nivel':   nivel,
+    'Docente': currentCourse?.teacher || ''
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  /* Ancho de columnas */
+  ws['!cols'] = [
+    { wch: 4 }, { wch: 36 }, { wch: 14 },
+    { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 24 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Asist. ${dateStr}`);
+
+  const fileName = `asistencia_${currentLevel}_${currentGrade}${currentSection}_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showToast(`📥 Excel del ${fmtDate(dateStr)} descargado`);
+}
+
+/* ============================================================
+   MODAL SELECTOR DE MES — abrir / cerrar
+   ============================================================ */
+function openMonthPickerModal() {
+  if (!studentsCache.length) { showToast('No hay alumnos cargados', 'err'); return; }
+
+  /* Pre-seleccionar el mes/año de la fecha visible en historial */
+  const dateStr = document.getElementById('hist-date-input')?.value || todayISO();
+  const [y, m]  = dateStr.split('-');
+
+  document.getElementById('modal-month-year').value  = y;
+  document.getElementById('modal-month-month').value = m;
+
+  /* Rango de año: 2020 hasta el año actual */
+  const yearSel  = document.getElementById('modal-month-year');
+  const thisYear = new Date().getFullYear();
+  yearSel.innerHTML = '';
+  for (let yr = thisYear; yr >= 2020; yr--) {
+    const opt = document.createElement('option');
+    opt.value       = yr;
+    opt.textContent = yr;
+    if (yr === parseInt(y)) opt.selected = true;
+    yearSel.appendChild(opt);
+  }
+
+  document.getElementById('modal-month-picker').style.display = 'flex';
+}
+
+function closeMonthPickerModal() {
+  document.getElementById('modal-month-picker').style.display = 'none';
+}
+
+/* Cerrar al click fuera del card */
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('modal-month-picker');
+  if (modal) {
+    modal.addEventListener('click', function(e) {
+      if (e.target === this) closeMonthPickerModal();
+    });
+  }
+});
+
+/* ============================================================
+   EXPORTAR HISTORIAL — MES COMPLETO
+   Se llama desde el botón "Confirmar" del modal selector.
+   Genera un Excel con una columna por día del mes elegido.
+   Filas = alumnos. Celdas = P / A / T / — según cada día.
+   Al final agrega columnas de resumen: total P, A, T y % asist.
+   ============================================================ */
+async function exportHistoryMonth() {
+  const year  = parseInt(document.getElementById('modal-month-year').value);
+  const month = parseInt(document.getElementById('modal-month-month').value);
+
+  if (!year || !month) { showToast('Selecciona mes y año', 'err'); return; }
+  if (!studentsCache.length) { showToast('No hay alumnos cargados', 'err'); return; }
+
+  closeMonthPickerModal();
+
+  const diasEnMes = new Date(year, month, 0).getDate();
+  const MONTHS    = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                     'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const nombreMes = MONTHS[month - 1];
+  const nivel     = currentLevel === 'primaria' ? 'Primaria' : 'Secundaria';
+  const grado     = `${currentGrade}° ${currentSection}`;
+
+  showToast(`⏳ Generando ${nombreMes} ${year}…`);
+
+  /* Pedir todos los días del mes en paralelo */
+  const promesas = [];
+  for (let d = 1; d <= diasEnMes; d++) {
+    const iso = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    promesas.push(
+      apiFetch(`/api/attendance/date/${iso}`)
+        .then(atts => ({ iso, atts }))
+        .catch(() => ({ iso, atts: [] }))
+    );
+  }
+  const resultados = await Promise.all(promesas);
+
+  /* Construir mapa: dia → { studentId → status } */
+  const idsEnCurso = new Set(studentsCache.map(s => s.id));
+  const mapPorDia  = {};
+  resultados.forEach(({ iso, atts }) => {
+    mapPorDia[iso] = {};
+    atts.forEach(a => {
+      if (idsEnCurso.has(a.studentId)) mapPorDia[iso][a.studentId] = a.status;
+    });
+  });
+
+  /* Verificar que haya al menos un día con datos */
+  const hayDatos = resultados.some(({ iso }) =>
+    Object.keys(mapPorDia[iso]).length > 0
+  );
+  if (!hayDatos) {
+    showToast(`No hay registros guardados en ${nombreMes} ${year}`, 'err');
+    return;
+  }
+
+  /* Solo incluir días que tengan al menos un registro */
+  const diasConDatos = resultados.filter(({ iso }) =>
+    Object.keys(mapPorDia[iso]).length > 0
+  );
+
+  const abrev = { presente: 'P', ausente: 'A', tardanza: 'T' };
+
+  /* Construir filas */
+  const rows = studentsCache.map((s, i) => {
+    const fila = {
+      '#':     i + 1,
+      'Apellidos y Nombres': s.name
+    };
+
+    let totalP = 0, totalA = 0, totalT = 0;
+
+    diasConDatos.forEach(({ iso }) => {
+      const [,, d] = iso.split('-');
+      const colLabel = `${parseInt(d)}`;
+      const st = mapPorDia[iso][s.id];
+      fila[colLabel] = abrev[st] || '—';
+      if (st === 'presente') totalP++;
+      else if (st === 'ausente') totalA++;
+      else if (st === 'tardanza') totalT++;
+    });
+
+    const totalAsist = totalP + totalT;
+    const totalDias  = diasConDatos.length;
+    fila['Pres.']    = totalP;
+    fila['Aus.']     = totalA;
+    fila['Tard.']    = totalT;
+    fila['% Asist.'] = totalDias > 0
+      ? Math.round(totalAsist / totalDias * 100) + '%'
+      : '—';
+
+    return fila;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  /* Anchos de columna */
+  const colWidths = [{ wch: 4 }, { wch: 36 }];
+  diasConDatos.forEach(() => colWidths.push({ wch: 4 }));
+  colWidths.push({ wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 9 });
+  ws['!cols'] = colWidths;
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${nombreMes} ${year}`);
+
+  const fileName = `asistencia_${currentLevel}_${currentGrade}${currentSection}_${year}-${String(month).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+  showToast(`📥 Excel de ${nombreMes} ${year} descargado`);
 }
 
 /* ============================================================
