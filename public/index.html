@@ -149,6 +149,12 @@
         </div>
       </div>
       <div class="att-header-right">
+        <button class="icon-btn" onclick="enterHistory()" title="Historial">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M12 7v5l3 3"/>
+          </svg>
+        </button>
         <button class="icon-btn" onclick="saveAttendance()" title="Guardar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="20" height="20"><path d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
         </button>
@@ -233,6 +239,33 @@
     </div>
 
     <div class="att-list" id="att-list"></div>
+  </div>
+
+  <!-- PANTALLA 4: HISTORIAL -->
+  <div id="screen-history" class="screen">
+    <div class="att-header hist-header">
+      <div class="att-header-left">
+        <button class="back-pill light" onclick="goTo('attendance')">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M13 16l-6-6 6-6"/></svg>
+          Volver
+        </button>
+        <div class="att-title-wrap">
+          <h2>📅 Historial</h2>
+          <div class="att-date" id="hist-course-label"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hist-body">
+      <div class="hist-date-picker">
+        <label for="hist-date-input">Elige una fecha</label>
+        <input type="date" id="hist-date-input" onchange="loadHistoryDate(this.value)">
+      </div>
+
+      <div class="hist-stats-bar" id="hist-stats-bar"></div>
+
+      <div class="hist-list" id="hist-list"></div>
+    </div>
   </div>
 
 </div>

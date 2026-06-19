@@ -53,6 +53,8 @@ function goTo(dest) {
     document.getElementById('screen-grade').classList.add('active');
   } else if (dest === 'attendance') {
     document.getElementById('screen-attendance').classList.add('active');
+  } else if (dest === 'history') {
+    document.getElementById('screen-history').classList.add('active');
   }
 }
 
@@ -718,6 +720,81 @@ async function apiFetch(url, method = 'GET', body = null, loadingMsg = null) {
    ============================================================ */
 function getStudents() {
   return studentsCache;
+}
+
+/* ============================================================
+   HISTORIAL DE ASISTENCIA (solo lectura, por fecha)
+   ============================================================ */
+function enterHistory() {
+  if (!currentCourse) { showToast('Selecciona primero un grado/sección', 'err'); return; }
+
+  document.getElementById('hist-course-label').textContent =
+    `${currentGrade}° ${currentSection} — ${currentLevel === 'primaria' ? 'Primaria' : 'Secundaria'}`;
+
+  const dateInput = document.getElementById('hist-date-input');
+  dateInput.value = todayISO();
+  dateInput.max   = todayISO(); // no se puede ver "futuro"
+
+  goTo('history');
+  loadHistoryDate(todayISO());
+}
+
+async function loadHistoryDate(dateStr) {
+  if (!dateStr || !currentCourse) return;
+
+  const listEl  = document.getElementById('hist-list');
+  const statsEl = document.getElementById('hist-stats-bar');
+  listEl.innerHTML  = '<div class="hist-empty">Cargando… ⏳</div>';
+  statsEl.innerHTML = '';
+
+  try {
+    const atts = await apiFetch(`/api/attendance/date/${dateStr}`);
+    const idsEnCurso = new Set(studentsCache.map(s => s.id));
+    const map = {};
+    atts.forEach(a => { if (idsEnCurso.has(a.studentId)) map[a.studentId] = a.status; });
+
+    const conRegistro = studentsCache.filter(s => map[s.id]);
+
+    if (conRegistro.length === 0) {
+      listEl.innerHTML = `<div class="hist-empty">🗒️ No hay asistencia guardada para el ${fmtDate(dateStr)}.</div>`;
+      return;
+    }
+
+    const presentes = studentsCache.filter(s => map[s.id] === 'presente').length;
+    const ausentes  = studentsCache.filter(s => map[s.id] === 'ausente').length;
+    const tardanzas = studentsCache.filter(s => map[s.id] === 'tardanza').length;
+    const pct       = studentsCache.length > 0
+      ? Math.round((presentes + tardanzas) / studentsCache.length * 100) : 0;
+
+    statsEl.innerHTML = `
+      <div class="hist-stat hs-pres"><span>${presentes}</span>Presentes</div>
+      <div class="hist-stat hs-aus"><span>${ausentes}</span>Ausentes</div>
+      <div class="hist-stat hs-tard"><span>${tardanzas}</span>Tardanzas</div>
+      <div class="hist-stat hs-pct"><span>${pct}%</span>Asistencia</div>
+    `;
+
+    const stickers = { presente: '⭐', ausente: '🌧️', tardanza: '⏰' };
+    const labels    = { presente: 'Presente', ausente: 'Ausente', tardanza: 'Tardanza' };
+
+    listEl.innerHTML = studentsCache.map((s, i) => {
+      const status = map[s.id];
+      if (!status) {
+        return `<div class="hist-row hist-row-empty">
+          <div class="hist-num">${i + 1}</div>
+          <div class="hist-name">${s.name}</div>
+          <div class="hist-sticker">➖</div>
+        </div>`;
+      }
+      return `<div class="hist-row hist-${status}">
+        <div class="hist-num">${i + 1}</div>
+        <div class="hist-name">${s.name}</div>
+        <div class="hist-sticker" title="${labels[status]}">${stickers[status]}</div>
+      </div>`;
+    }).join('');
+
+  } catch (e) {
+    listEl.innerHTML = '<div class="hist-empty">⚠️ Error al cargar el historial.</div>';
+  }
 }
 
 /* ============================================================
